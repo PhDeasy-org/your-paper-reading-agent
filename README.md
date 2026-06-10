@@ -24,6 +24,16 @@ Personalized arXiv paper discovery and automated report generation using AI agen
 
 ## Installation
 
+### One-liner (macOS)
+
+```bash
+bash install.sh
+```
+
+This automatically installs Python 3.12+, uv, HuggingFace CLI, and sets up ppagent with a default config.
+
+### Manual
+
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
@@ -35,7 +45,7 @@ uv sync
 Also requires the [HuggingFace CLI](https://huggingface.co/docs/huggingface_hub/en/guides/cli):
 
 ```bash
-uv pip install huggingface_hub[cli]
+uv tool install "huggingface_hub[cli]"
 ```
 
 ---
@@ -62,6 +72,33 @@ uv run ppagent report 2506.12345
 # 6. Full pipeline: search + report all matches
 uv run ppagent run
 ```
+
+---
+
+## Shell Completion
+
+ppagent supports tab completion for commands, options, and arguments.
+
+### Install (automatic)
+
+```bash
+ppagent --install-completion
+```
+
+This detects your shell (zsh, bash, or fish) and installs the completion script automatically. Reload your shell afterwards:
+
+```bash
+source ~/.zshrc   # or ~/.bashrc, etc.
+```
+
+### Install (manual)
+
+```bash
+# Show the completion script (to inspect or copy)
+ppagent --show-completion
+```
+
+The install script (`bash install.sh`) sets up completions automatically.
 
 ---
 

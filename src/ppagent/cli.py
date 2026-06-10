@@ -16,7 +16,7 @@ from ppagent.config import AppConfig, load_config, PROJECT_ROOT
 app = typer.Typer(
     name="ppagent",
     help="Personalized paper discovery and report generation agents.",
-    add_completion=False,
+    add_completion=True,
     no_args_is_help=True,
 )
 

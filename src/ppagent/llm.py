@@ -28,7 +28,35 @@ class LLMClient:
             api_key=config.api_key,
             timeout=config.timeout,
         )
-        self._instructor = instructor.from_openai(self._client)
+        mode = self._resolve_instructor_mode()
+        self._instructor = instructor.from_openai(self._client, mode=mode)
+
+    def _resolve_instructor_mode(self) -> Any:
+        mode_str = self.config.instructor_mode.lower()
+        if mode_str == "auto":
+            model_lower = self.config.model.lower()
+            if "deepseek" in model_lower or "reasoner" in model_lower or "r1" in model_lower:
+                logger.info("Auto-detected DeepSeek/reasoner model '%s': using MD_JSON mode", self.config.model)
+                return instructor.Mode.MD_JSON
+            return instructor.Mode.TOOLS
+
+        mapping = {
+            "tools": instructor.Mode.TOOLS,
+            "json": instructor.Mode.JSON,
+            "md_json": instructor.Mode.MD_JSON,
+            "json_schema": instructor.Mode.JSON_SCHEMA,
+        }
+        if mode_str not in mapping:
+            logger.warning("Unknown instructor_mode '%s', falling back to TOOLS", self.config.instructor_mode)
+            return instructor.Mode.TOOLS
+        return mapping[mode_str]
+
+    def _clamp_max_tokens(self, max_tokens: int | None) -> int:
+        val = max_tokens or self.config.max_tokens
+        if val > 16384:
+            logger.warning("max_tokens %d is abnormally high for output completion; clamping to 16384", val)
+            return 16384
+        return val
 
     def chat(
         self,
@@ -43,7 +71,7 @@ class LLMClient:
             "model": self.config.model,
             "messages": messages,
             "temperature": temperature if temperature is not None else self.config.temperature,
-            "max_tokens": max_tokens or self.config.max_tokens,
+            "max_tokens": self._clamp_max_tokens(max_tokens),
         }
         if tools:
             kwargs["tools"] = tools
@@ -60,7 +88,7 @@ class LLMClient:
             messages=messages,
             response_model=response_model,
             temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
+            max_tokens=self._clamp_max_tokens(None),
         )
 
     def _call_with_retry(self, kwargs: dict[str, Any]) -> openai.types.chat.ChatCompletion:

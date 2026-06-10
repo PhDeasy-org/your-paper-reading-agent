@@ -27,6 +27,7 @@ class LLMConfig(BaseModel):
     temperature: float = 0.3
     max_tokens: int = 4096
     timeout: int = 120  # seconds
+    instructor_mode: str = "auto"
 
 
 class SearchConfig(BaseModel):
