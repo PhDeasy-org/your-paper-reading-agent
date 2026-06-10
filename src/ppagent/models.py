@@ -1,0 +1,131 @@
+"""Pydantic data models for ppagent."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class Paper(BaseModel):
+    """Represents a paper from HuggingFace daily papers."""
+
+    id: str  # arXiv ID e.g. "2506.12345"
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    published_at: datetime | None = None
+    upvotes: int = 0
+    summary: str = ""
+    arxiv_url: str = ""
+    pdf_url: str = ""
+    hf_url: str = ""
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.arxiv_url and self.id:
+            self.arxiv_url = f"https://arxiv.org/abs/{self.id}"
+        if not self.pdf_url and self.id:
+            self.pdf_url = f"https://arxiv.org/pdf/{self.id}"
+        if not self.hf_url and self.id:
+            self.hf_url = f"https://huggingface.co/papers/{self.id}"
+
+
+class PaperContent(BaseModel):
+    """Full text content of a paper."""
+
+    paper: Paper
+    markdown: str = ""
+    sections: dict[str, str] = Field(default_factory=dict)
+
+
+class ReportSection(BaseModel):
+    """A single section of the generated report."""
+
+    name: str  # "metadata", "tldr", "method", etc.
+    content: str
+    confidence: float = 1.0
+
+
+class PaperReport(BaseModel):
+    """Complete report for a single paper."""
+
+    paper: Paper
+    metadata: ReportSection
+    benchmarks: ReportSection
+    tldr: ReportSection
+    previous_works: ReportSection
+    method: ReportSection
+    evaluation: ReportSection
+    critique: ReportSection
+    related_works: list[Paper] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=datetime.now)
+    model_used: str = ""
+
+
+class AgentResult(BaseModel):
+    """Standardized output from any agent."""
+
+    agent_name: str
+    success: bool
+    data: dict[str, Any] = Field(default_factory=dict)
+    error: str = ""
+    usage: dict[str, int] = Field(default_factory=dict)
+
+
+# --- Structured LLM output models ---
+
+
+class ScoredPaper(BaseModel):
+    """A paper with a relevance score assigned by the Searcher agent."""
+
+    paper_id: str
+    title: str
+    relevance_score: float = Field(ge=0.0, le=1.0)
+    justification: str = ""
+
+
+class SearcherOutput(BaseModel):
+    """Structured output from the Searcher agent."""
+
+    scored_papers: list[ScoredPaper] = Field(default_factory=list)
+
+
+class WriterOutput(BaseModel):
+    """Structured output from the Writer agent."""
+
+    metadata_keywords: list[str] = Field(default_factory=list)
+    affiliations: list[str] = Field(default_factory=list)
+    benchmarks: str = "None reported."
+    tldr: str = ""
+    previous_works_summary: str = ""
+    method_details: str = ""
+    performance_evaluation: str = ""
+
+
+class RelatedWork(BaseModel):
+    """A related work found by the Finder agent."""
+
+    paper_id: str
+    title: str
+    relevance: str = ""
+
+
+class FinderOutput(BaseModel):
+    """Structured output from the Finder agent."""
+
+    narrative: str = ""
+    related_works: list[RelatedWork] = Field(default_factory=list)
+
+
+class CritiqueFinding(BaseModel):
+    """A single finding from the Criticizer agent."""
+
+    finding: str
+    severity: str = "medium"  # low / medium / high
+
+
+class CriticizerOutput(BaseModel):
+    """Structured output from the Criticizer agent."""
+
+    summary: str = ""
+    findings: list[CritiqueFinding] = Field(default_factory=list)

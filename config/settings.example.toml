@@ -1,0 +1,49 @@
+# ppagent configuration
+# Copy this file to settings.toml and edit as needed.
+
+[llm]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-key-here"
+model = "gpt-4o"
+temperature = 0.3
+max_tokens = 4096
+timeout = 120
+
+[search]
+default_date = "today"
+default_limit = 50
+sort = "trending"
+profile_path = "config/profile.md"
+relevance_threshold = 0.6
+max_reports_per_run = 5
+
+[report]
+output_dir = "output"
+template_dir = "templates"
+formats = ["md", "html"]
+download_pdf = true
+pdf_cache_dir = ".cache/pdfs"
+
+[scheduler]
+enabled = false
+cron_hour = 8
+cron_minute = 0
+timezone = "Asia/Shanghai"
+
+[publish]
+enabled = false
+
+[publish.wechat]
+enabled = false
+appid = ""
+secret = ""
+
+[publish.blog]
+enabled = false
+webhook_url = ""
+api_key = ""
+
+[publish.notion]
+enabled = false
+api_key = ""
+database_id = ""

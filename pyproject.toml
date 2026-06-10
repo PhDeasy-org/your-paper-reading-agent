@@ -1,0 +1,35 @@
+[project]
+name = "ppagent"
+version = "0.1.0"
+description = "Personalized arXiv paper discovery and report generation agents."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.0",
+    "pydantic>=2.0",
+    "openai>=1.30",
+    "instructor>=1.3",
+    "httpx>=0.27",
+    "PyMuPDF>=1.24",
+    "Jinja2>=3.1",
+    "markdown>=3.6",
+    "apscheduler>=3.10",
+    "tomli-w>=1.0",
+]
+
+[project.scripts]
+ppagent = "ppagent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ppagent"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
