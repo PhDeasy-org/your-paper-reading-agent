@@ -131,6 +131,7 @@ max_reports_per_run = 5
 output_dir = "output"
 formats = ["md", "html"]
 download_pdf = true
+language = "English"  # e.g. "Chinese", "Japanese", "French"
 
 [scheduler]
 enabled = false

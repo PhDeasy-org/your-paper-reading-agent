@@ -49,6 +49,7 @@ class ReportConfig(BaseModel):
     download_pdf: bool = True
     pdf_cache_dir: str = ".cache/pdfs"
     custom_agents: list[str] = Field(default_factory=list)
+    language: str = "English"
 
 
 class SchedulerConfig(BaseModel):

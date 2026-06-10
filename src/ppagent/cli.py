@@ -209,6 +209,7 @@ def config_show() -> None:
     console.print(f"  LLM: {cfg.llm.model} @ {cfg.llm.base_url}")
     console.print(f"  Profile: {cfg.profile_path}")
     console.print(f"  Output: {cfg.output_dir}")
+    console.print(f"  Language: {cfg.report.language}")
     console.print(f"  Scheduler: {'enabled' if cfg.scheduler.enabled else 'disabled'}")
     console.print(f"  Publishing: {'enabled' if cfg.publish.enabled else 'disabled'}")
 
@@ -248,6 +249,7 @@ def config_init() -> None:
             "formats": ["md", "html"],
             "download_pdf": True,
             "pdf_cache_dir": ".cache/pdfs",
+            "language": "English",
         },
         "scheduler": {
             "enabled": False,

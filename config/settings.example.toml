@@ -23,6 +23,7 @@ template_dir = "templates"
 formats = ["md", "html"]
 download_pdf = true
 pdf_cache_dir = ".cache/pdfs"
+language = "English"  # output language for reports (e.g. "Chinese", "Japanese", "French")
 
 [scheduler]
 enabled = false

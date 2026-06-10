@@ -124,6 +124,10 @@ and the problem domain. Then summarize the related work landscape.\
 
         messages = LLMClient.build_messages(_SYSTEM_PROMPT, user_prompt)
 
+        lang = self.config.report.language
+        if lang and lang.lower() != "english":
+            messages[0]["content"] += f"\n\nIMPORTANT: Write ALL narrative text in {lang}. Keep paper titles and technical terms in their original language."
+
         try:
             narrative = self._run_with_tools(messages)
         except Exception as exc:

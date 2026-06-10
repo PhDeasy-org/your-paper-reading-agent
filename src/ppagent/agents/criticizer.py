@@ -71,8 +71,12 @@ class CriticizerAgent(AgentBase):
 """
 
         try:
+            system_prompt = _SYSTEM_PROMPT
+            lang = self.config.report.language
+            if lang and lang.lower() != "english":
+                system_prompt += f"\n\nIMPORTANT: Write ALL output text in {lang}. Keep paper titles and technical terms in their original language."
             output: CriticizerOutput = self.llm.chat_structured(
-                LLMClient.build_messages(_SYSTEM_PROMPT, user_prompt),
+                LLMClient.build_messages(system_prompt, user_prompt),
                 response_model=CriticizerOutput,
             )
         except Exception as exc:
