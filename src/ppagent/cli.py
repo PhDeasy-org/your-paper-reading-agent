@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Optional
 
 import typer
@@ -199,6 +198,14 @@ def run(
 
 
 # ─── config commands ─────────────────────────────────────────────────────────
+
+
+@config_app.callback(invoke_without_command=True)
+def config_main(ctx: typer.Context) -> None:
+    """Manage ppagent configuration."""
+    if ctx.invoked_subcommand is None:
+        from ppagent.tui import run_config_tui
+        run_config_tui()
 
 
 @config_app.command("show")

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentBase
 from ppagent.llm import LLMClient
-from ppagent.config import AppConfig
 from ppagent.models import AgentResult, Paper, SearcherOutput
 
 logger = logging.getLogger(__name__)

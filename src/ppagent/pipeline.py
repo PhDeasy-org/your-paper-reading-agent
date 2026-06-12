@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
 
 from ppagent import hf, pdf
 from ppagent.agents.assembler import Assembler

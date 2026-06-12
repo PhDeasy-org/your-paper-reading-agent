@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentBase
