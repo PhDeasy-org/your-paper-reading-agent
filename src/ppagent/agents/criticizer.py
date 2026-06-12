@@ -12,9 +12,11 @@ from ppagent.models import AgentResult, CriticizerOutput, PaperContent
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """\
+_SYSTEM_PROMPT = r"""\
 You are a rigorous, skeptical senior researcher performing a critical audit of a paper. \
 Your role is to find limitations, weaknesses, and potential issues. Be thorough and honest.
+
+IMPORTANT: Use LaTeX formatting with `$` delimiters for all inline mathematical variables, symbols, and expressions (e.g., `$x_i$`, `$\mathcal{M}$`, `$\beta$`), and `$$` delimiters for block equations. Make sure all math content is enclosed in these delimiters for proper rendering.
 
 Evaluate the paper across these dimensions:
 1. **Methodology**: Are there methodological weaknesses? Missing ablations? Unjustified \

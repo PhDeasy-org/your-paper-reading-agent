@@ -45,6 +45,20 @@
   .severity-medium { color: #d97706; font-weight: 600; }
   .severity-low { color: #6b7280; }
 </style>
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      processEnvironments: true
+    },
+    options: {
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
 </head>
 <body>
 
@@ -63,24 +77,24 @@
 </table>
 
 <h2>Benchmarks</h2>
-<p>{{ benchmarks.content }}</p>
+<div>{{ benchmarks.content | markdown }}</div>
 
 <h2>Previous Work &amp; Limitations</h2>
-<p>{{ previous_works.content }}</p>
+<div>{{ previous_works.content | markdown }}</div>
 
 {% if finder_narrative %}
 <h3>Related Work Landscape</h3>
-<p>{{ finder_narrative }}</p>
+<div>{{ finder_narrative | markdown }}</div>
 {% endif %}
 
 <h2>Method</h2>
-<p>{{ method.content }}</p>
+<div>{{ method.content | markdown }}</div>
 
 <h2>Performance Evaluation</h2>
-<p>{{ evaluation.content }}</p>
+<div>{{ evaluation.content | markdown }}</div>
 
 <h2>Critical Analysis</h2>
-<p>{{ critique.content }}</p>
+<div>{{ critique.content | markdown }}</div>
 
 <h2>Related Papers</h2>
 {% if related_works %}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,37 @@ from ppagent.models import AgentResult, Paper, PaperReport, ReportSection
 from ppagent.storage import Storage
 
 logger = logging.getLogger(__name__)
+
+def render_markdown_with_math(text: str) -> str:
+    """Renders markdown while protecting LaTeX math blocks from being escaped or mangled."""
+    import markdown as md_lib
+
+    placeholders = {}
+
+    # Match block math: $$...$$ and \[...\]
+    block_pattern = re.compile(r'(\$\$.*?\$\$|\\\[.*?\\\])', re.DOTALL)
+    # Match inline math: $...$ and \(...\)
+    inline_pattern = re.compile(r'(\$(?!\s)[^\$\n]+?(?<!\s)\$|\\\(.*?\\\))')
+
+    temp_text = text or ""
+
+    def replace_match(match: re.Match) -> str:
+        placeholder = f"<!--MATH_PLACEHOLDER_{len(placeholders)}-->"
+        placeholders[placeholder] = match.group(0)
+        return placeholder
+
+    # Replace block math first, then inline math
+    temp_text = block_pattern.sub(replace_match, temp_text)
+    temp_text = inline_pattern.sub(replace_match, temp_text)
+
+    # Render markdown
+    html = md_lib.markdown(temp_text, extensions=["tables", "fenced_code"])
+
+    # Restore math blocks
+    for placeholder, original in placeholders.items():
+        html = html.replace(placeholder, original)
+
+    return html
 
 
 class Assembler:
@@ -28,6 +60,10 @@ class Assembler:
                 loader=FileSystemLoader(str(template_dir)),
                 autoescape=False,
             )
+            try:
+                self.env.filters["markdown"] = render_markdown_with_math
+            except Exception:
+                pass
         else:
             self.env = None
             logger.warning("Template directory not found: %s", template_dir)
@@ -194,8 +230,7 @@ class Assembler:
 
     def _fallback_html(self, report: PaperReport, md_content: str) -> str:
         """Fallback HTML when template is unavailable."""
-        import markdown as md_lib
-        body = md_lib.markdown(md_content, extensions=["tables", "fenced_code"])
+        body = render_markdown_with_math(md_content)
         return f"""\
 <!DOCTYPE html>
 <html lang="en">
@@ -214,6 +249,20 @@ class Assembler:
   hr {{ border: none; border-top: 1px solid #ddd; margin: 2rem 0; }}
   a {{ color: #2563eb; }}
 </style>
+<script>
+  window.MathJax = {{
+    tex: {{
+      inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+      displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
+      processEscapes: true,
+      processEnvironments: true
+    }},
+    options: {{
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+    }}
+  }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
 </head>
 <body>
 {body}

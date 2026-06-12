@@ -97,7 +97,15 @@ class WriterOutput(BaseModel):
     affiliations: list[str] = Field(default_factory=list)
     benchmarks: str = "None reported."
     tldr: str = ""
-    previous_works_summary: str = ""
+    previous_works_summary: str = Field(
+        default="",
+        description=(
+            "Summary of the related work section, highlighting prior methods and their limitations. "
+            "For EACH mentioned prior work, method, framework, baseline, or dataset, you MUST include a "
+            "Markdown hyperlink (e.g. `[Work Name](URL)`) to its official paper, arXiv page, or a search link "
+            "on Google Scholar or arXiv search."
+        ),
+    )
     method_details: str = ""
     performance_evaluation: str = ""
 
