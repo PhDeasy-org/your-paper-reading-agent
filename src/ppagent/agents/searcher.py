@@ -68,7 +68,12 @@ Please score each paper's relevance to this user profile.\
             )
         except Exception as exc:
             logger.error("Searcher LLM call failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
+            return AgentResult(
+                agent_name=self.name,
+                success=False,
+                error=str(exc),
+                usage=self.llm.get_usage(),
+            )
 
         # Build score lookup
         score_map = {sp.paper_id: sp for sp in output.scored_papers}

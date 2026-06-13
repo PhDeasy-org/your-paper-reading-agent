@@ -35,6 +35,12 @@ class Storage:
         """Get the directory for a paper's report files."""
         return self.output_dir / self._safe_filename(title, published_at)
 
+    def paper_dir(self, title: str, published_at: datetime | None = None) -> Path:
+        """Public accessor for a paper's report directory (creates it if needed)."""
+        d = self._paper_dir(title, published_at)
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
     def save_report(self, report: PaperReport, *, md_content: str = "", html_content: str = "") -> Path:
         """Save a report's Markdown, HTML, and metadata to disk.
 

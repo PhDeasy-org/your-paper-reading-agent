@@ -13,7 +13,9 @@ class PublisherBase(ABC):
     name: str = "base"
 
     @abstractmethod
-    def publish(self, report: PaperReport, *, md_content: str, html_content: str) -> bool:
+    def publish(
+        self, report: PaperReport, *, md_content: str, html_content: str
+    ) -> bool:
         """Publish the report. Returns True on success, False on failure."""
         ...
 

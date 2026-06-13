@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import time
 import logging
 import threading
+from pathlib import Path
 from typing import Any
 
 import instructor
@@ -79,6 +81,55 @@ class LLMClient:
             return instructor.Mode.TOOLS
         return mapping[mode_str]
 
+    _PROVIDER_PATTERNS = (
+        ("openai.com", "openai"),
+        ("deepseek.com", "deepseek"),
+        ("anthropic.com", "anthropic"),
+        ("dashscope", "qwen"),
+        ("moonshot.cn", "kimi"),
+        ("googleapis.com", "gemini"),
+        ("minimax", "minimax"),
+        ("volces.com", "volcengine"),
+        ("bigmodel.cn", "zhipu"),
+    )
+
+    def _detect_provider(self) -> str | None:
+        base = self.config.base_url.lower()
+        for pattern, provider in self._PROVIDER_PATTERNS:
+            if pattern in base:
+                return provider
+        return None
+
+    def _thinking_kwargs(self) -> dict[str, Any]:
+        """Return extra API kwargs to enable extended thinking/reasoning.
+
+        Detects the provider from ``base_url`` and passes the exact parameters
+        documented by each vendor so the model uses its default thinking budget.
+        """
+        if not self.config.enable_thinking:
+            return {}
+        provider = self._detect_provider()
+        if provider == "openai":
+            return {"reasoning_effort": "medium"}
+        if provider == "deepseek":
+            return {"reasoning_effort": "high", "extra_body": {"thinking": {"type": "enabled"}}}
+        if provider == "anthropic":
+            return {"extra_body": {"thinking": {"type": "adaptive"}}}
+        if provider == "qwen":
+            return {"extra_body": {"enable_thinking": True}}
+        if provider == "kimi":
+            return {"extra_body": {"thinking": {"type": "enabled"}}}
+        if provider == "gemini":
+            return {"reasoning_effort": "medium"}
+        if provider == "minimax":
+            return {"extra_body": {"thinking": {"type": "adaptive"}}}
+        if provider == "volcengine":
+            return {"extra_body": {"thinking": {"type": "enabled", "budget_tokens": 32000}}}
+        if provider == "zhipu":
+            return {"extra_body": {"thinking": {"type": "enabled"}}}
+        logger.warning("enable_thinking is set but provider for '%s' is not recognized; no thinking params sent", self.config.base_url)
+        return {}
+
     def _clamp_max_tokens(self, max_tokens: int | None) -> int:
         val = max_tokens or self.config.max_tokens
         if val > 16384:
@@ -101,6 +152,11 @@ class LLMClient:
             "temperature": temperature if temperature is not None else self.config.temperature,
             "max_tokens": self._clamp_max_tokens(max_tokens),
         }
+        thinking = self._thinking_kwargs()
+        if thinking:
+            kwargs.update(thinking)
+            if "reasoning_effort" in thinking:
+                kwargs.pop("temperature", None)
         if tools:
             kwargs["tools"] = tools
         resp = self._call_with_retry(kwargs)
@@ -113,15 +169,47 @@ class LLMClient:
         response_model: type[BaseModel],
     ) -> BaseModel:
         """Chat completion that guarantees a structured Pydantic output via instructor."""
-        response, raw_completion = self._instructor.chat.completions.create_with_completion(
-            model=self.config.model,
-            messages=messages,
-            response_model=response_model,
-            temperature=self.config.temperature,
-            max_tokens=self._clamp_max_tokens(None),
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": messages,
+            "response_model": response_model,
+            "temperature": self.config.temperature,
+            "max_tokens": self._clamp_max_tokens(None),
+        }
+        thinking = self._thinking_kwargs()
+        if thinking:
+            kwargs.update(thinking)
+            if "reasoning_effort" in thinking:
+                kwargs.pop("temperature", None)
+        response, raw_completion = self._instructor.chat.completions.create_with_completion(**kwargs)
         self._record_usage(raw_completion.usage)
         return response
+
+    def chat_vision(
+        self,
+        system: str,
+        user_text: str,
+        images: list[Path],
+    ) -> str:
+        """Multimodal chat completion: send images + text, return plain text.
+
+        ``images`` are file paths to PNG/JPEGs. Each is embedded as a base64
+        data URI so the call works with any OpenAI-compatible vision endpoint
+        without exposing local files. Returns the assistant's text response.
+        """
+        content: list[dict[str, Any]] = [{"type": "text", "text": user_text}]
+        for img_path in images:
+            data_uri = _image_to_data_uri(img_path)
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": data_uri},
+            })
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": content},
+        ]
+        resp = self.chat(messages)
+        return resp.choices[0].message.content or ""
 
     def _call_with_retry(self, kwargs: dict[str, Any]) -> openai.types.chat.ChatCompletion:
         """Call the OpenAI API with exponential backoff on transient errors."""
@@ -155,3 +243,12 @@ class LLMClient:
             msgs.extend(context)
         msgs.append({"role": "user", "content": user})
         return msgs
+
+
+def _image_to_data_uri(img_path: Path) -> str:
+    """Encode an image file as a base64 data URI for vision API calls."""
+    ext = img_path.suffix.lower().lstrip(".") or "png"
+    mime = "jpeg" if ext in ("jpg", "jpeg") else "png"
+    data = img_path.read_bytes()
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:image/{mime};base64,{b64}"

@@ -82,12 +82,14 @@ class FinderAgent(AgentWithTools):
                 return "No papers found."
             results = []
             for p in papers:
-                results.append({
-                    "id": p.id,
-                    "title": p.title,
-                    "upvotes": p.upvotes,
-                    "summary": p.summary[:200] if p.summary else "",
-                })
+                results.append(
+                    {
+                        "id": p.id,
+                        "title": p.title,
+                        "upvotes": p.upvotes,
+                        "summary": p.summary[:200] if p.summary else "",
+                    }
+                )
             return json.dumps(results, indent=2)
         except Exception as exc:
             return f"Search failed: {exc}"
@@ -95,13 +97,16 @@ class FinderAgent(AgentWithTools):
     def _tool_paper_info(self, paper_id: str) -> str:
         try:
             paper = hf.paper_info(paper_id)
-            return json.dumps({
-                "id": paper.id,
-                "title": paper.title,
-                "authors": paper.authors,
-                "upvotes": paper.upvotes,
-                "summary": paper.summary[:500] if paper.summary else "",
-            }, indent=2)
+            return json.dumps(
+                {
+                    "id": paper.id,
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "upvotes": paper.upvotes,
+                    "summary": paper.summary[:500] if paper.summary else "",
+                },
+                indent=2,
+            )
         except Exception as exc:
             return f"Paper info failed: {exc}"
 
@@ -110,7 +115,7 @@ class FinderAgent(AgentWithTools):
         user_prompt = f"""\
 ## Paper: {content.paper.title}
 
-**Authors**: {', '.join(content.paper.authors)}
+**Authors**: {", ".join(content.paper.authors)}
 
 ## Paper Summary
 {content.paper.summary}
@@ -126,13 +131,20 @@ and the problem domain. Then summarize the related work landscape.\
 
         lang = self.config.report.language
         if lang and lang.lower() != "english":
-            messages[0]["content"] += f"\n\nIMPORTANT: Write ALL narrative text in {lang}. Keep paper titles and technical terms in their original language."
+            messages[0]["content"] += (
+                f"\n\nIMPORTANT: Write ALL narrative text in {lang}. Keep paper titles and technical terms in their original language."
+            )
 
         try:
             narrative = self._run_with_tools(messages)
         except Exception as exc:
             logger.error("Finder agent failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
+            return AgentResult(
+                agent_name=self.name,
+                success=False,
+                error=str(exc),
+                usage=self.llm.get_usage(),
+            )
 
         # Now do a structured call to extract the final output
         final_prompt = f"""\
@@ -154,7 +166,9 @@ related papers (with paper_id and title).\
                 response_model=FinderOutput,
             )
         except Exception as exc:
-            logger.warning("Finder structured output failed: %s — using narrative only", exc)
+            logger.warning(
+                "Finder structured output failed: %s — using narrative only", exc
+            )
             output = FinderOutput(narrative=narrative)
 
         # Build Paper objects from related works

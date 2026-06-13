@@ -108,14 +108,20 @@ class AgentWithTools(AgentBase):
                 else:
                     result = f"Error: unknown tool '{fn_name}'"
 
-                messages.append({
-                    "role": "tool",
-                    "content": str(result),
-                    "tool_call_id": call.id,
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "content": str(result),
+                        "tool_call_id": call.id,
+                    }
+                )
 
-            logger.debug("Tool iteration %d/%d: called %d tools",
-                         iteration + 1, max_iterations, len(choice.message.tool_calls))
+            logger.debug(
+                "Tool iteration %d/%d: called %d tools",
+                iteration + 1,
+                max_iterations,
+                len(choice.message.tool_calls),
+            )
 
         # If we exhausted iterations, return last content
         return resp.choices[0].message.content or ""

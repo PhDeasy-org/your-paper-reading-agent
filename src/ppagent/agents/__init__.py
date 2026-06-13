@@ -24,7 +24,9 @@ def register_agent(cls: type[AgentBase]) -> type[AgentBase]:
 def get_agent(name: str, **kwargs) -> AgentBase:
     """Instantiate a registered agent by name."""
     if name not in _AGENT_REGISTRY:
-        raise KeyError(f"Agent '{name}' not registered. Available: {list(_AGENT_REGISTRY.keys())}")
+        raise KeyError(
+            f"Agent '{name}' not registered. Available: {list(_AGENT_REGISTRY.keys())}"
+        )
     return _AGENT_REGISTRY[name](**kwargs)
 
 
@@ -61,3 +63,4 @@ from ppagent.agents.searcher import SearcherAgent  # noqa: F401, E402
 from ppagent.agents.writer import WriterAgent  # noqa: F401, E402
 from ppagent.agents.finder import FinderAgent  # noqa: F401, E402
 from ppagent.agents.criticizer import CriticizerAgent  # noqa: F401, E402
+from ppagent.agents.figure_selector import FigureSelectorAgent  # noqa: F401, E402

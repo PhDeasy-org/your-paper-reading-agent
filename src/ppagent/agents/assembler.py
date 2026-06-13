@@ -10,6 +10,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+from ppagent.figures import Figure
 from ppagent.models import AgentResult, Paper, PaperReport, ReportSection
 from ppagent.storage import Storage
 
@@ -102,10 +103,11 @@ LLM_PRICING = {
     },
 }
 
+
 def calculate_cost(model_name: str, usage: dict[str, int]) -> dict[str, Any] | None:
     m = model_name.lower()
     matched_key = None
-    
+
     if "deepseek" in m:
         matched_key = "deepseek"
     elif "qwen" in m:
@@ -124,7 +126,7 @@ def calculate_cost(model_name: str, usage: dict[str, int]) -> dict[str, Any] | N
                 "output_price": output_price,
                 "input_cost": input_cost,
                 "output_cost": output_cost,
-                "total_cost": input_cost + output_cost
+                "total_cost": input_cost + output_cost,
             }
     elif "claude" in m or "anthropic" in m:
         matched_key = "anthropic"
@@ -140,7 +142,7 @@ def calculate_cost(model_name: str, usage: dict[str, int]) -> dict[str, Any] | N
                 "output_price": output_price,
                 "input_cost": input_cost,
                 "output_cost": output_cost,
-                "total_cost": input_cost + output_cost
+                "total_cost": input_cost + output_cost,
             }
     elif "gemini" in m or "google" in m:
         matched_key = "google"
@@ -156,7 +158,7 @@ def calculate_cost(model_name: str, usage: dict[str, int]) -> dict[str, Any] | N
                 "output_price": output_price,
                 "input_cost": input_cost,
                 "output_cost": output_cost,
-                "total_cost": input_cost + output_cost
+                "total_cost": input_cost + output_cost,
             }
     elif "grok" in m:
         matched_key = "grok"
@@ -190,9 +192,10 @@ def calculate_cost(model_name: str, usage: dict[str, int]) -> dict[str, Any] | N
             "output_price": op,
             "input_cost": input_cost,
             "output_cost": output_cost,
-            "total_cost": input_cost + output_cost
+            "total_cost": input_cost + output_cost,
         }
     return None
+
 
 def render_markdown_with_math(text: str) -> str:
     """Renders markdown while protecting LaTeX math blocks from being escaped or mangled."""
@@ -201,10 +204,12 @@ def render_markdown_with_math(text: str) -> str:
     placeholders = {}
 
     # Match block math: $$...$$ and \[...\]
-    block_pattern = re.compile(r'(\$\$.*?\$\$|\\\[.*?\\\])', re.DOTALL)
+    block_pattern = re.compile(r"(\$\$.*?\$\$|\\\[.*?\\\])", re.DOTALL)
     # Match inline math: $...$ and \(...\)
     # Allow single newlines but not double newlines (paragraphs) to support multiline inline formulas
-    inline_pattern = re.compile(r'(\$(?!\s)(?:[^\$\n]|\n(?!\n))+?(?<!\s)\$|\\\(.*?\\\))')
+    inline_pattern = re.compile(
+        r"(\$(?!\s)(?:[^\$\n]|\n(?!\n))+?(?<!\s)\$|\\\(.*?\\\))"
+    )
 
     temp_text = text or ""
 
@@ -224,7 +229,9 @@ def render_markdown_with_math(text: str) -> str:
     for placeholder, original in placeholders.items():
         # Escape '<', '>', and '&' inside the math block to prevent the browser from
         # interpreting them as HTML tags or entities, while keeping them valid for MathJax.
-        escaped_original = original.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        escaped_original = (
+            original.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        )
         html = html.replace(placeholder, escaped_original)
 
     return html
@@ -236,9 +243,21 @@ class Assembler:
     This is NOT an LLM agent — it simply validates, orders, and renders sections.
     """
 
-    def __init__(self, template_dir: Path, storage: Storage, model_used: str = "") -> None:
+    def __init__(
+        self,
+        template_dir: Path,
+        storage: Storage,
+        model_map: dict[str, str] | None = None,
+        model_used: str = "",
+    ) -> None:
         self.storage = storage
-        self.model_used = model_used
+        # Map of agent_name → model name (for per-model cost breakdown).
+        self.model_map = model_map or {}
+        # Primary model label for the report footer (first agent's model, or the
+        # explicit model_used for backward compat).
+        self.model_used = model_used or (
+            next(iter(self.model_map.values()), "") if self.model_map else ""
+        )
         if template_dir.is_dir():
             self.env = Environment(
                 loader=FileSystemLoader(str(template_dir)),
@@ -259,6 +278,8 @@ class Assembler:
         writer_result: AgentResult,
         finder_result: AgentResult,
         criticizer_result: AgentResult,
+        figure_selector_result: AgentResult | None = None,
+        selected_figure: Figure | None = None,
     ) -> tuple[PaperReport, str, str]:
         """Assemble all agent results into a PaperReport + rendered Markdown + HTML.
 
@@ -298,16 +319,24 @@ class Assembler:
             content=c.get("critique", "Critical analysis unavailable."),
         )
 
-        # Aggregate token usage
-        results = [writer_result, finder_result, criticizer_result]
+        # Aggregate token usage across all report-stage agents, and roll it up
+        # per-model so cost is accurate even when agents use different models.
+        report_results: list[AgentResult] = [
+            writer_result,
+            finder_result,
+            criticizer_result,
+        ]
+        if figure_selector_result is not None:
+            report_results.append(figure_selector_result)
+
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        for res in results:
+        for res in report_results:
             if res and res.usage:
                 for k in usage:
                     usage[k] += res.usage.get(k, 0)
 
-        # Calculate cost
-        cost_report = calculate_cost(self.model_used, usage)
+        # Per-model cost breakdown.
+        cost_report = self._build_cost_report(report_results)
 
         report = PaperReport(
             paper=paper,
@@ -326,13 +355,78 @@ class Assembler:
         )
 
         # Render templates
-        md_content = self._render_md(report, w, f)
-        html_content = self._render_html(report, w, f, md_content)
+        md_content = self._render_md(report, w, f, selected_figure)
+        html_content = self._render_html(report, w, f, md_content, selected_figure)
 
         # Save to disk
-        self.storage.save_report(report, md_content=md_content, html_content=html_content)
+        self.storage.save_report(
+            report, md_content=md_content, html_content=html_content
+        )
 
         return report, md_content, html_content
+
+    def _build_cost_report(self, results: list[AgentResult]) -> dict[str, Any] | None:
+        """Build a per-model cost breakdown from agent results.
+
+        Returns a dict shaped as::
+
+            {
+                "total_cost": float,
+                "models": [
+                    {"model", "provider", "usage": {prompt,completion,total}, "cost": {...cost dict...}},
+                    ...
+                ],
+            }
+
+        or ``None`` if no model could be priced. The structure is backward
+        compatible with the old single-model shape: ``total_cost`` is present at
+        the top level, and when only one model is used ``models`` has one entry.
+        """
+        # Roll up usage per model name.
+        per_model_usage: dict[str, dict[str, int]] = {}
+        for res in results:
+            if not res or not res.usage or not res.agent_name:
+                continue
+            model = self.model_map.get(res.agent_name) or self.model_used
+            bucket = per_model_usage.setdefault(
+                model, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            )
+            for k in bucket:
+                bucket[k] += res.usage.get(k, 0)
+
+        if not per_model_usage:
+            return None
+
+        model_entries: list[dict[str, Any]] = []
+        total_cost = 0.0
+        any_priced = False
+        for model, bucket in per_model_usage.items():
+            cost = calculate_cost(model, bucket)
+            if cost is None:
+                # Unknown pricing — still record usage so the dashboard can show it.
+                cost = {
+                    "provider": "Unknown",
+                    "model": model,
+                    "input_cost": 0.0,
+                    "output_cost": 0.0,
+                    "total_cost": 0.0,
+                }
+            else:
+                any_priced = True
+            total_cost += cost["total_cost"]
+            model_entries.append(
+                {
+                    "model": cost.get("model", model),
+                    "provider": cost.get("provider", "Unknown"),
+                    "usage": bucket,
+                    "cost": cost,
+                }
+            )
+
+        if not any_priced:
+            return None
+
+        return {"total_cost": total_cost, "models": model_entries}
 
     def _build_metadata_text(self, paper: Paper, writer_data: dict) -> str:
         """Build the metadata section text."""
@@ -346,7 +440,13 @@ class Assembler:
         ]
         return "\n".join(lines)
 
-    def _template_context(self, report: PaperReport, writer_data: dict, finder_data: dict) -> dict:
+    def _template_context(
+        self,
+        report: PaperReport,
+        writer_data: dict,
+        finder_data: dict,
+        selected_figure: Figure | None = None,
+    ) -> dict:
         return {
             "paper": report.paper,
             "metadata": report.metadata,
@@ -362,32 +462,54 @@ class Assembler:
             "keywords": writer_data.get("keywords", []),
             "affiliations": writer_data.get("affiliations", []),
             "finder_narrative": finder_data.get("narrative", ""),
+            "selected_figure": selected_figure,
             "usage": report.usage,
             "cost_report": report.cost_report,
         }
 
-    def _render_md(self, report: PaperReport, writer_data: dict, finder_data: dict) -> str:
+    def _render_md(
+        self,
+        report: PaperReport,
+        writer_data: dict,
+        finder_data: dict,
+        selected_figure: Figure | None = None,
+    ) -> str:
         """Render the Markdown report."""
         if self.env:
             try:
                 template = self.env.get_template("report.md.jinja2")
-                return template.render(**self._template_context(report, writer_data, finder_data))
+                return template.render(
+                    **self._template_context(
+                        report, writer_data, finder_data, selected_figure
+                    )
+                )
             except Exception as exc:
                 logger.warning("MD template rendering failed: %s — using fallback", exc)
 
         return self._fallback_md(report)
 
-    def _render_html(self, report: PaperReport, writer_data: dict, finder_data: dict, md_content: str) -> str:
+    def _render_html(
+        self,
+        report: PaperReport,
+        writer_data: dict,
+        finder_data: dict,
+        md_content: str,
+        selected_figure: Figure | None = None,
+    ) -> str:
         """Render the HTML report."""
         if self.env:
             try:
                 template = self.env.get_template("report.html.jinja2")
                 return template.render(
-                    **self._template_context(report, writer_data, finder_data),
+                    **self._template_context(
+                        report, writer_data, finder_data, selected_figure
+                    ),
                     markdown_content=md_content,
                 )
             except Exception as exc:
-                logger.warning("HTML template rendering failed: %s — using fallback", exc)
+                logger.warning(
+                    "HTML template rendering failed: %s — using fallback", exc
+                )
 
         return self._fallback_html(report, md_content)
 
@@ -402,8 +524,8 @@ class Assembler:
 | Field | Value |
 |-------|-------|
 | **Paper** | [arXiv:{p.id}]({p.arxiv_url}) |
-| **Published** | {p.published_at.strftime('%Y-%m-%d') if p.published_at else 'Unknown'} |
-| **Authors** | {', '.join(p.authors)} |
+| **Published** | {p.published_at.strftime("%Y-%m-%d") if p.published_at else "Unknown"} |
+| **Authors** | {", ".join(p.authors)} |
 
 ## Benchmarks
 {report.benchmarks.content}
@@ -421,10 +543,10 @@ class Assembler:
 {report.critique.content}
 
 ## Related Papers
-{chr(10).join(f'- [{rp.title}]({rp.arxiv_url})' for rp in report.related_works) or 'None found.'}
+{chr(10).join(f"- [{rp.title}]({rp.arxiv_url})" for rp in report.related_works) or "None found."}
 
 ---
-*Generated by ppagent on {report.generated_at.strftime('%Y-%m-%d %H:%M')} using {report.model_used}*
+*Generated by ppagent on {report.generated_at.strftime("%Y-%m-%d %H:%M")} using {report.model_used}*
 """
 
     def _fallback_html(self, report: PaperReport, md_content: str) -> str:

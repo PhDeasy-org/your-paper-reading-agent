@@ -9,9 +9,11 @@ from ppagent import hf, pdf
 from ppagent.agents.assembler import Assembler
 from ppagent.agents.criticizer import CriticizerAgent
 from ppagent.agents.finder import FinderAgent
+from ppagent.agents.figure_selector import FigureSelectorAgent
 from ppagent.agents.searcher import SearcherAgent
 from ppagent.agents.writer import WriterAgent
 from ppagent.config import AppConfig
+from ppagent import figures as figures_mod
 from ppagent.hf import HfCliError
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, Paper, PaperContent, PaperReport
@@ -25,16 +27,29 @@ class PaperPipeline:
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        self.llm = LLMClient(config.llm)
-        self.searcher = SearcherAgent(self.llm, config)
-        self.writer = WriterAgent(self.llm, config)
-        self.finder = FinderAgent(self.llm, config)
-        self.criticizer = CriticizerAgent(self.llm, config)
+        # One LLMClient per role; agents are wired to the role they belong to.
+        self._clients = {
+            "text": LLMClient(config.llms.text),
+            "vision": LLMClient(config.llms.vision),
+            "searcher": LLMClient(config.llms.searcher),
+        }
+        self.searcher = SearcherAgent(self._clients["searcher"], config)
+        self.writer = WriterAgent(self._clients["text"], config)
+        self.finder = FinderAgent(self._clients["text"], config)
+        self.criticizer = CriticizerAgent(self._clients["text"], config)
+        self.figure_selector = FigureSelectorAgent(self._clients["vision"], config)
         self.storage = Storage(config.output_dir)
+        # Map each report-stage agent name to the model it uses, so the
+        # assembler can compute a per-model cost breakdown.
+        from ppagent.config import AGENT_LLM_ROLE
+        model_map = {
+            name: config.llms.for_role(role).model
+            for name, role in AGENT_LLM_ROLE.items()
+        }
         self.assembler = Assembler(
             template_dir=config.template_dir,
             storage=self.storage,
-            model_used=config.llm.model,
+            model_map=model_map,
         )
 
     def search(
@@ -78,6 +93,7 @@ class PaperPipeline:
 
         # Get paper content: try hf papers read first, fall back to PDF
         content_md = ""
+        pdf_path = None
         try:
             content_md = hf.paper_read(paper_id)
             logger.info("Got paper content via hf papers read (%d chars)", len(content_md))
@@ -96,6 +112,34 @@ class PaperPipeline:
             logger.warning("Using abstract as content for %s", paper_id)
 
         paper_content = PaperContent(paper=paper, markdown=content_md)
+
+        # Ensure we have the PDF downloaded for figure extraction.
+        # (hf papers read may have succeeded without a local PDF.)
+        if pdf_path is None and self.config.report.download_pdf:
+            try:
+                pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
+            except Exception as exc:
+                logger.warning("Could not download PDF for figures: %s", exc)
+                pdf_path = None
+
+        # Extract captioned figures and let the selector pick the best one.
+        # Figures are written into the paper's report directory so they sit
+        # next to report.html and can be referenced by a relative path.
+        paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
+        selected_figure = None
+        figure_selector_result: AgentResult | None = None
+        if pdf_path is not None:
+            try:
+                figures = figures_mod.extract_figures(pdf_path, paper_dir)
+            except Exception as exc:
+                logger.warning("Figure extraction failed: %s", exc)
+                figures = []
+            if figures:
+                figure_selector_result = self.figure_selector.run(figures=figures, base_dir=paper_dir)
+                if figure_selector_result.success:
+                    selected_figure = figure_selector_result.data.get("selected_figure")
+                else:
+                    logger.warning("Figure selection failed: %s", figure_selector_result.error)
 
         # Run writer and finder in parallel
         writer_result: AgentResult | None = None
@@ -130,6 +174,8 @@ class PaperPipeline:
             writer_result=writer_result,
             finder_result=finder_result,
             criticizer_result=criticizer_result,
+            figure_selector_result=figure_selector_result,
+            selected_figure=selected_figure,
         )
 
         logger.info("Report generated for %s: %s", paper_id, paper.title)

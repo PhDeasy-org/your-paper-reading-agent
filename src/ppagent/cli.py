@@ -94,7 +94,7 @@ def search(
         raise typer.Exit(1)
 
     profile_text = cfg.profile_path.read_text()
-    llm = LLMClient(cfg.llm)
+    llm = LLMClient(cfg.llms.searcher)
     searcher = SearcherAgent(llm, cfg)
     result = searcher.run(papers=papers, profile=profile_text)
 
@@ -129,11 +129,12 @@ def search(
 
 @app.command()
 def report(
-    paper_id: str = typer.Argument(..., help="Paper ID (e.g. 2506.12345) or arXiv URL."),
+    paper_ids: list[str] = typer.Argument(..., help="Paper ID(s) (e.g. 2506.12345) or arXiv URL(s)."),
     output_dir: Optional[str] = typer.Option(None, "--output", "-o", help="Output directory."),
     force: bool = typer.Option(False, "--force", "-f", help="Regenerate without prompting if report already exists."),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the report in the default browser after generation."),
 ) -> None:
-    """Generate a detailed report for a specific paper."""
+    """Generate detailed reports for specified papers."""
     from ppagent import hf
     from ppagent.pipeline import PaperPipeline
 
@@ -141,31 +142,45 @@ def report(
     if output_dir:
         cfg.report.output_dir = output_dir
 
-    # Extract ID from URL if needed
-    if "/" in paper_id:
-        paper_id = paper_id.rstrip("/").split("/")[-1]
-
-    console.print(f"[bold]Generating report for paper:[/bold] {paper_id}")
-
     pipeline = PaperPipeline(cfg)
+    has_errors = False
 
-    if not force:
+    for paper_id in paper_ids:
+        # Extract ID from URL if needed
+        if "/" in paper_id:
+            paper_id = paper_id.rstrip("/").split("/")[-1]
+
+        console.print(f"\n[bold]Generating report for paper:[/bold] {paper_id}")
+
+        if not force:
+            try:
+                paper = hf.paper_info(paper_id)
+            except Exception:
+                paper = None
+            if paper and pipeline.storage.report_exists(paper.title, paper.published_at):
+                if not typer.confirm(f"Report for \"{paper.title}\" already exists. Regenerate?"):
+                    console.print("[yellow]Skipped.[/yellow]")
+                    continue
+
         try:
-            paper = hf.paper_info(paper_id)
-        except Exception:
-            paper = None
-        if paper and pipeline.storage.report_exists(paper.title, paper.published_at):
-            if not typer.confirm(f"Report for \"{paper.title}\" already exists. Regenerate?"):
-                console.print("[yellow]Skipped.[/yellow]")
-                raise typer.Exit(0)
+            paper_report = pipeline.report(paper_id)
+        except Exception as exc:
+            console.print(f"[red]Report generation failed for {paper_id}:[/red] {exc}")
+            has_errors = True
+            continue
 
-    try:
-        paper_report = pipeline.report(paper_id)
-    except Exception as exc:
-        console.print(f"[red]Report generation failed:[/red] {exc}")
+        report_dir = cfg.output_dir / Storage._safe_filename(paper_report.paper.title, paper_report.paper.published_at)
+        console.print(f"[green]Report generated![/green] Output: {report_dir}")
+
+        if open_browser:
+            html_path = report_dir / "report.html"
+            if html_path.exists():
+                import webbrowser
+                console.print(f"Opening report for \"{paper_report.paper.title}\" in default browser...")
+                webbrowser.open(html_path.resolve().as_uri())
+
+    if has_errors:
         raise typer.Exit(1)
-
-    console.print(f"[green]Report generated![/green] Output: {cfg.output_dir / Storage._safe_filename(paper_report.paper.title, paper_report.paper.published_at)}")
 
 
 # ─── run ─────────────────────────────────────────────────────────────────────
@@ -177,6 +192,7 @@ def run(
     limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max papers to fetch."),
     schedule: bool = typer.Option(False, "--schedule", "-s", help="Enable auto-fetch scheduler."),
     force: bool = typer.Option(False, "--force", "-f", help="Regenerate without prompting if reports already exist."),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the report in the default browser after generation."),
 ) -> None:
     """Run the full pipeline: search + report generation."""
     if schedule:
@@ -209,7 +225,14 @@ def run(
 
     console.print(f"\n[green]Done![/green] Generated {len(reports)} report(s).")
     for r in reports:
-        console.print(f"  - {r.paper.title} → {cfg.output_dir / Storage._safe_filename(r.paper.title, r.paper.published_at)}")
+        report_dir = cfg.output_dir / Storage._safe_filename(r.paper.title, r.paper.published_at)
+        console.print(f"  - {r.paper.title} → {report_dir}")
+        if open_browser:
+            html_path = report_dir / "report.html"
+            if html_path.exists():
+                import webbrowser
+                console.print(f"Opening report for \"{r.paper.title}\" in browser...")
+                webbrowser.open(html_path.resolve().as_uri())
 
 
 # ─── config commands ─────────────────────────────────────────────────────────
@@ -228,7 +251,9 @@ def config_show() -> None:
     """Show current configuration."""
     cfg = _load()
     console.print(f"[bold]Config loaded from:[/bold] {PROJECT_ROOT / 'config' / 'settings.toml'}")
-    console.print(f"  LLM: {cfg.llm.model} @ {cfg.llm.base_url}")
+    console.print(f"  Text LLM (writer/finder/criticizer): {cfg.llms.text.model} @ {cfg.llms.text.base_url}")
+    console.print(f"  Vision LLM (figure_selector):       {cfg.llms.vision.model} @ {cfg.llms.vision.base_url}")
+    console.print(f"  Searcher LLM (paper scoring):        {cfg.llms.searcher.model} @ {cfg.llms.searcher.base_url}")
     console.print(f"  Profile: {cfg.profile_path}")
     console.print(f"  Output: {cfg.output_dir}")
     console.print(f"  Language: {cfg.report.language}")
@@ -248,14 +273,27 @@ def config_init() -> None:
         console.print(f"[yellow]Config already exists:[/yellow] {target}")
         return
 
+    # Per-role LLM defaults: text (writer/finder/criticizer), vision
+    # (figure_selector), searcher (paper scoring). By default all three point
+    # at the same OpenAI endpoint so a new user only edits one api_key.
+    _llm_default = {
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "sk-your-key-here",
+        "model": "gpt-4o",
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "timeout": 120,
+        "instructor_mode": "auto",
+        "enable_thinking": False,
+    }
+    import copy
     default = {
-        "llm": {
-            "base_url": "https://api.openai.com/v1",
-            "api_key": "sk-your-key-here",
-            "model": "gpt-4o",
-            "temperature": 0.3,
-            "max_tokens": 4096,
-            "timeout": 120,
+        "llms": {
+            # text & searcher default to the same model; vision must be a
+            # vision-capable model (gpt-4o is). Users can split roles later.
+            "text": copy.deepcopy(_llm_default),
+            "vision": copy.deepcopy(_llm_default),
+            "searcher": copy.deepcopy(_llm_default),
         },
         "search": {
             "default_date": "today",

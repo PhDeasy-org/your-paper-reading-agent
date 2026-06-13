@@ -1,6 +1,6 @@
 [project]
 name = "ppagent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Personalized arXiv paper discovery and report generation agents."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,6 +16,9 @@ dependencies = [
     "markdown>=3.6",
     "apscheduler>=3.10",
     "tomli-w>=1.0",
+    "huggingface_hub[cli]>=0.23",
+    "anthropic>=0.42",
+    "google-genai>=1.0",
 ]
 
 [project.scripts]

@@ -24,7 +24,9 @@ def register_publisher(cls: type[PublisherBase]) -> type[PublisherBase]:
 def get_publisher(name: str, **kwargs) -> PublisherBase:
     """Instantiate a registered publisher by name."""
     if name not in _PUBLISHER_REGISTRY:
-        raise KeyError(f"Publisher '{name}' not registered. Available: {list(_PUBLISHER_REGISTRY.keys())}")
+        raise KeyError(
+            f"Publisher '{name}' not registered. Available: {list(_PUBLISHER_REGISTRY.keys())}"
+        )
     return _PUBLISHER_REGISTRY[name](**kwargs)
 
 

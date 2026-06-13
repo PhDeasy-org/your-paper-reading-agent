@@ -29,7 +29,9 @@ class BlogPublisher(PublisherBase):
             return False
         return True
 
-    def publish(self, report: PaperReport, *, md_content: str, html_content: str) -> bool:
+    def publish(
+        self, report: PaperReport, *, md_content: str, html_content: str
+    ) -> bool:
         if not self.validate_config():
             return False
 
@@ -41,7 +43,9 @@ class BlogPublisher(PublisherBase):
             "title": report.paper.title,
             "paper_id": report.paper.id,
             "arxiv_url": report.paper.arxiv_url,
-            "published_at": report.paper.published_at.isoformat() if report.paper.published_at else None,
+            "published_at": report.paper.published_at.isoformat()
+            if report.paper.published_at
+            else None,
             "content_markdown": md_content,
             "content_html": html_content,
             "tldr": report.tldr.content,

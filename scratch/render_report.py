@@ -1,5 +1,4 @@
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader

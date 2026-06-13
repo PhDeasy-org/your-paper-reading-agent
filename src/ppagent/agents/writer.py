@@ -40,8 +40,8 @@ class WriterAgent(AgentBase):
         user_prompt = f"""\
 ## Paper: {content.paper.title}
 
-**Authors**: {', '.join(content.paper.authors)}
-**Published**: {content.paper.published_at.strftime('%Y-%m-%d') if content.paper.published_at else 'Unknown'}
+**Authors**: {", ".join(content.paper.authors)}
+**Published**: {content.paper.published_at.strftime("%Y-%m-%d") if content.paper.published_at else "Unknown"}
 
 ## Full Paper Content
 
@@ -59,7 +59,12 @@ class WriterAgent(AgentBase):
             )
         except Exception as exc:
             logger.error("Writer LLM call failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
+            return AgentResult(
+                agent_name=self.name,
+                success=False,
+                error=str(exc),
+                usage=self.llm.get_usage(),
+            )
 
         return AgentResult(
             agent_name=self.name,

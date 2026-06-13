@@ -464,6 +464,34 @@
     line-height: 1.7;
     color: var(--text-muted);
   }
+
+  /* Paper Figure (Method pipeline diagram) */
+  .paper-figure {
+    margin: 0 0 1.75rem 0;
+    background: var(--bg-app);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .paper-figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 640px;
+    object-fit: contain;
+    background: #ffffff;
+  }
+  [data-theme="dark"] .paper-figure img {
+    /* Most figures have white backgrounds; keep them readable on dark theme */
+    background: #ffffff;
+  }
+  .paper-figure figcaption {
+    padding: 0.75rem 1.1rem;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    line-height: 1.5;
+    border-top: 1px solid var(--border);
+  }
   .markdown-body p {
     margin-bottom: 1.25rem;
   }
@@ -1042,6 +1070,12 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
       Method
     </h2>
+    {% if selected_figure %}
+    <figure class="paper-figure">
+      <img src="{{ selected_figure.image_path }}" alt="{{ selected_figure.caption }}" loading="lazy">
+      <figcaption>{{ selected_figure.caption }}</figcaption>
+    </figure>
+    {% endif %}
     <div class="markdown-body">
       {{ method.content | markdown }}
     </div>
@@ -1105,11 +1139,39 @@
       <div class="cost-summary-card">
         <div class="cost-summary-label">Total Cost</div>
         <div class="cost-summary-value">${{ "%.6f"|format(cost_report.total_cost) }}</div>
-        <div class="cost-summary-sub">Model: <span>{{ cost_report.model }}</span></div>
-        <div class="cost-summary-badge">{{ cost_report.provider }}</div>
+        {% if cost_report.models and cost_report.models|length == 1 %}
+        <div class="cost-summary-sub">Model: <span>{{ cost_report.models[0].model }}</span></div>
+        <div class="cost-summary-badge">{{ cost_report.models[0].provider }}</div>
+        {% else %}
+        <div class="cost-summary-sub">{{ cost_report.models|length }} models</div>
+        <div class="cost-summary-badge">Multi-model</div>
+        {% endif %}
       </div>
       
       <div class="cost-details-panel">
+        {% if cost_report.models %}
+        <div class="cost-breakdown-grid">
+          {% for m in cost_report.models %}
+          <div class="cost-detail-row">
+            <span class="detail-label">
+              <strong style="font-family: monospace; color: var(--text-main);">{{ m.model }}</strong>
+              <span class="detail-price" style="margin-left: 0.5rem;">{{ m.provider }}</span>
+            </span>
+            <span class="detail-value">
+              <strong>{{ m.usage.total_tokens }}</strong> tok
+              <span class="detail-price">${{ "%.6f"|format(m.cost.total_cost) }}</span>
+            </span>
+          </div>
+          {% endfor %}
+          <div class="cost-detail-row total-row">
+            <span class="detail-label">Total Tokens</span>
+            <span class="detail-value">
+              <strong>{{ usage.total_tokens }}</strong>
+            </span>
+          </div>
+        </div>
+        {% else %}
+        {# Legacy single-model shape (backward compat) #}
         <div class="token-usage-bar">
           {% set total_tok = usage.prompt_tokens + usage.completion_tokens %}
           {% set input_pct = (usage.prompt_tokens / total_tok * 100)|round|int if total_tok > 0 else 50 %}
@@ -1123,7 +1185,6 @@
             <span class="legend-item"><span class="dot output-dot"></span> Output: {{ output_pct }}%</span>
           </div>
         </div>
-        
         <div class="cost-breakdown-grid">
           <div class="cost-detail-row">
             <span class="detail-label">Input Tokens</span>
@@ -1132,7 +1193,6 @@
               <span class="detail-price">${{ "%.6f"|format(cost_report.input_cost) }}</span>
             </span>
           </div>
-          
           <div class="cost-detail-row">
             <span class="detail-label">Output Tokens</span>
             <span class="detail-value">
@@ -1140,7 +1200,6 @@
               <span class="detail-price">${{ "%.6f"|format(cost_report.output_cost) }}</span>
             </span>
           </div>
-          
           <div class="cost-detail-row total-row">
             <span class="detail-label">Total Tokens</span>
             <span class="detail-value">
@@ -1148,6 +1207,7 @@
             </span>
           </div>
         </div>
+        {% endif %}
       </div>
     </div>
   </section>

@@ -1,9 +1,7 @@
-from datetime import datetime
-from pathlib import Path
 import pytest
 
-from ppagent.models import AgentResult, Paper, PaperReport
-from ppagent.agents.assembler import Assembler, calculate_cost, LLM_PRICING
+from ppagent.models import AgentResult
+from ppagent.agents.assembler import Assembler, calculate_cost
 from ppagent.storage import Storage
 
 
@@ -90,7 +88,8 @@ def test_assembler_cost_report(tmp_path, sample_paper, template_dir):
     
     # Check that cost report exists
     assert report.cost_report is not None
-    assert report.cost_report["provider"] == "DeepSeek"
+    assert report.cost_report["models"][0]["provider"] == "DeepSeek"
+    assert report.cost_report["models"][0]["model"] == "deepseek-chat"
     assert pytest.approx(report.cost_report["total_cost"]) == (4000/1e6 * 0.435) + (2000/1e6 * 0.87)
 
     # Check that Markdown contains the cost breakdown (price table no longer rendered)

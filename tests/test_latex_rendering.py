@@ -9,13 +9,12 @@ Covers:
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
 
 from ppagent.agents.assembler import Assembler, render_markdown_with_math
-from ppagent.models import AgentResult, Paper, PaperReport, ReportSection
+from ppagent.models import AgentResult, PaperReport
 from ppagent.storage import Storage
 
 

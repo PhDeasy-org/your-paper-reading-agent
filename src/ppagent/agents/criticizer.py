@@ -58,15 +58,15 @@ class CriticizerAgent(AgentBase):
         if writer_sections:
             writer_context = f"""
 ## Writer's Analysis Summary
-- **Method**: {writer_sections.get('method', 'N/A')}
-- **Evaluation**: {writer_sections.get('evaluation', 'N/A')}
-- **Previous Works**: {writer_sections.get('previous_works', 'N/A')}
+- **Method**: {writer_sections.get("method", "N/A")}
+- **Evaluation**: {writer_sections.get("evaluation", "N/A")}
+- **Previous Works**: {writer_sections.get("previous_works", "N/A")}
 """
 
         user_prompt = f"""\
 ## Paper: {content.paper.title}
 
-**Authors**: {', '.join(content.paper.authors)}
+**Authors**: {", ".join(content.paper.authors)}
 {writer_context}
 ## Full Paper Content
 
@@ -84,7 +84,12 @@ class CriticizerAgent(AgentBase):
             )
         except Exception as exc:
             logger.error("Criticizer LLM call failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
+            return AgentResult(
+                agent_name=self.name,
+                success=False,
+                error=str(exc),
+                usage=self.llm.get_usage(),
+            )
 
         # Format findings into a readable critique
         critique_parts = [output.summary]
@@ -97,7 +102,9 @@ class CriticizerAgent(AgentBase):
             data={
                 "critique": "\n\n".join(critique_parts),
                 "findings_count": len(output.findings),
-                "high_severity": sum(1 for f in output.findings if f.severity == "high"),
+                "high_severity": sum(
+                    1 for f in output.findings if f.severity == "high"
+                ),
             },
             usage=self.llm.get_usage(),
         )

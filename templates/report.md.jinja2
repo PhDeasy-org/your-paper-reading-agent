@@ -27,6 +27,12 @@
 
 ## Method
 
+{% if selected_figure %}
+![{{ selected_figure.caption }}]({{ selected_figure.image_path }})
+
+*{{ selected_figure.caption }}*
+
+{% endif %}
 {{ method.content }}
 
 ## Performance Evaluation
@@ -50,11 +56,18 @@ No related papers found.
 {% if cost_report %}
 ## Generation Cost
 
+{% if cost_report.models %}
+{% for m in cost_report.models %}
+- **Model**: `{{ m.model }}` ({{ m.provider }}) — {{ m.usage.total_tokens }} tokens (${{ "%.6f"|format(m.cost.total_cost) }})
+{% endfor %}
+- **Total Report Generation Cost**: **${{ "%.6f"|format(cost_report.total_cost) }}**
+{% else %}
 - **Model Used**: `{{ cost_report.model }}` (Matched: **{{ cost_report.provider }}**)
 - **Input Tokens**: {{ usage.prompt_tokens }} (${{ "%.6f"|format(cost_report.input_cost) }})
 - **Output Tokens**: {{ usage.completion_tokens }} (${{ "%.6f"|format(cost_report.output_cost) }})
 - **Total Tokens**: {{ usage.total_tokens }}
 - **Total Report Generation Cost**: **${{ "%.6f"|format(cost_report.total_cost) }}**
+{% endif %}
 {% endif %}
 
 ---

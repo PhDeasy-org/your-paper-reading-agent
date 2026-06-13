@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from ppagent.models import (
-    AgentResult,
     Paper,
     PaperReport,
     ReportSection,

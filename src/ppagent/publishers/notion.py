@@ -32,7 +32,9 @@ class NotionPublisher(PublisherBase):
             return False
         return True
 
-    def publish(self, report: PaperReport, *, md_content: str, html_content: str) -> bool:
+    def publish(
+        self, report: PaperReport, *, md_content: str, html_content: str
+    ) -> bool:
         if not self.validate_config():
             return False
 
@@ -49,19 +51,53 @@ class NotionPublisher(PublisherBase):
             if not line:
                 continue
             if line.startswith("# "):
-                blocks.append({"object": "block", "type": "heading_1",
-                               "heading_1": {"rich_text": [{"type": "text", "text": {"content": line[2:]}}]}})
+                blocks.append(
+                    {
+                        "object": "block",
+                        "type": "heading_1",
+                        "heading_1": {
+                            "rich_text": [
+                                {"type": "text", "text": {"content": line[2:]}}
+                            ]
+                        },
+                    }
+                )
             elif line.startswith("## "):
-                blocks.append({"object": "block", "type": "heading_2",
-                               "heading_2": {"rich_text": [{"type": "text", "text": {"content": line[3:]}}]}})
+                blocks.append(
+                    {
+                        "object": "block",
+                        "type": "heading_2",
+                        "heading_2": {
+                            "rich_text": [
+                                {"type": "text", "text": {"content": line[3:]}}
+                            ]
+                        },
+                    }
+                )
             elif line.startswith("### "):
-                blocks.append({"object": "block", "type": "heading_3",
-                               "heading_3": {"rich_text": [{"type": "text", "text": {"content": line[4:]}}]}})
+                blocks.append(
+                    {
+                        "object": "block",
+                        "type": "heading_3",
+                        "heading_3": {
+                            "rich_text": [
+                                {"type": "text", "text": {"content": line[4:]}}
+                            ]
+                        },
+                    }
+                )
             else:
                 # Truncate long lines to Notion's 2000 char limit per text object
                 text = line[:2000]
-                blocks.append({"object": "block", "type": "paragraph",
-                               "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]}})
+                blocks.append(
+                    {
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [{"type": "text", "text": {"content": text}}]
+                        },
+                    }
+                )
 
         payload = {
             "parent": {"database_id": self.database_id},
@@ -73,7 +109,9 @@ class NotionPublisher(PublisherBase):
 
         try:
             with httpx.Client(timeout=30) as client:
-                resp = client.post(f"{_NOTION_API}/pages", headers=headers, json=payload)
+                resp = client.post(
+                    f"{_NOTION_API}/pages", headers=headers, json=payload
+                )
                 resp.raise_for_status()
                 data = resp.json()
             page_id = data.get("id", "unknown")

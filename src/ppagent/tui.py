@@ -40,9 +40,29 @@ class MenuItem:
         self.description = description
 
 
+def _llm_submenu_items(role: str) -> list[MenuItem]:
+    """Build the 7-field LLM submenu for a given role (text/vision/searcher).
+
+    Keys are dotted as ``llms.<role>.<field>`` so the existing
+    get/set_config_value helpers resolve them against ``AppConfig.llms``.
+    """
+    prefix = f"llms.{role}"
+    return [
+        MenuItem("<- Back to LLM Roles", target="back"),
+        MenuItem("API Base URL", key=f"{prefix}.base_url", val_type=str, description="Endpoint URL for the LLM API provider."),
+        MenuItem("API Key", key=f"{prefix}.api_key", val_type=str, secret=True, description="Authentication key for the LLM API."),
+        MenuItem("Model Name", key=f"{prefix}.model", val_type=str, description="Target model (e.g. gpt-4o, deepseek-chat)."),
+        MenuItem("Temperature", key=f"{prefix}.temperature", val_type=float, description="LLM sampling temperature (higher is more creative)."),
+        MenuItem("Max Tokens", key=f"{prefix}.max_tokens", val_type=int, description="Max tokens generated in each API response."),
+        MenuItem("Timeout", key=f"{prefix}.timeout", val_type=int, description="HTTP request timeout in seconds."),
+        MenuItem("Instructor Mode", key=f"{prefix}.instructor_mode", val_type=str, description="Structured output mode: auto, json, tool_call, etc."),
+        MenuItem("Enable Thinking", key=f"{prefix}.enable_thinking", val_type=bool, description="Enable extended reasoning (uses model's default thinking budget)."),
+    ]
+
+
 MENUS: dict[str, list[MenuItem]] = {
     "main": [
-        MenuItem("LLM API Settings", target="llm", description="Configure model provider, API key, model name, and parameters."),
+        MenuItem("LLM API Settings", target="llms", description="Configure per-role LLM providers: text (writer/finder/criticizer), vision (figure selector), searcher (paper scoring)."),
         MenuItem("Search & Discovery Settings", target="search", description="Configure default date, fetching limits, and relevance matching."),
         MenuItem("Report Settings", target="report", description="Configure report directories, formats, and output language."),
         MenuItem("Scheduler Settings", target="scheduler", description="Configure cron-like background paper discovery times."),
@@ -50,16 +70,15 @@ MENUS: dict[str, list[MenuItem]] = {
         MenuItem("[bold green]Save & Exit[/bold green]", target="save", description="Save all changes to settings.toml and exit."),
         MenuItem("[bold red]Discard & Exit[/bold red]", target="discard", description="Discard all changes and exit."),
     ],
-    "llm": [
+    "llms": [
         MenuItem("<- Back to Main Menu", target="back"),
-        MenuItem("API Base URL", key="llm.base_url", val_type=str, description="Endpoint URL for the LLM API provider."),
-        MenuItem("API Key", key="llm.api_key", val_type=str, secret=True, description="Authentication key for the LLM API."),
-        MenuItem("Model Name", key="llm.model", val_type=str, description="Target model (e.g. gpt-4o, deepseek-chat)."),
-        MenuItem("Temperature", key="llm.temperature", val_type=float, description="LLM sampling temperature (higher is more creative)."),
-        MenuItem("Max Tokens", key="llm.max_tokens", val_type=int, description="Max tokens generated in each API response."),
-        MenuItem("Timeout", key="llm.timeout", val_type=int, description="HTTP request timeout in seconds."),
-        MenuItem("Instructor Mode", key="llm.instructor_mode", val_type=str, description="Structured output mode: auto, json, tool_call, etc."),
+        MenuItem("Text LLM (writer/finder/criticizer)", target="llm_text", description="LLM used by the writer, finder, and criticizer agents for paper analysis."),
+        MenuItem("Vision LLM (figure selector)", target="llm_vision", description="Vision-capable LLM used by the figure_selector agent to pick pipeline diagrams."),
+        MenuItem("Searcher LLM (paper scoring)", target="llm_searcher", description="LLM used by the searcher agent to score paper relevance to your profile."),
     ],
+    "llm_text": _llm_submenu_items("text"),
+    "llm_vision": _llm_submenu_items("vision"),
+    "llm_searcher": _llm_submenu_items("searcher"),
     "search": [
         MenuItem("<- Back to Main Menu", target="back"),
         MenuItem("Default Date", key="search.default_date", val_type=str, description="Default papers date (YYYY-MM-DD or 'today')."),
