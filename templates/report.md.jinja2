@@ -47,18 +47,9 @@
 No related papers found.
 {% endif %}
 
-## LLM Reference Pricing & Generation Cost
-
-### Official LLM Price Table (per 1 Million Tokens)
-
-| Provider | Representative Model | Input Price (USD) | Output Price (USD) |
-| :--- | :--- | :--- | :--- |
-{% for key, val in price_table.items() %}
-| **{{ val.provider }}** | `{{ val.model }}` | ${{ "%.3f"|format(val.input_price) }} | ${{ "%.3f"|format(val.output_price) }} |
-{% endfor %}
-
 {% if cost_report %}
-### Generation Cost Breakdown
+## Generation Cost
+
 - **Model Used**: `{{ cost_report.model }}` (Matched: **{{ cost_report.provider }}**)
 - **Input Tokens**: {{ usage.prompt_tokens }} (${{ "%.6f"|format(cost_report.input_cost) }})
 - **Output Tokens**: {{ usage.completion_tokens }} (${{ "%.6f"|format(cost_report.output_cost) }})

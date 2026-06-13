@@ -27,7 +27,7 @@ Personalized arXiv paper discovery and automated report generation using AI agen
 ### One-liner (macOS)
 
 ```bash
-bash install.sh
+curl -fsSL https://raw.githubusercontent.com/PhDeasy-org/your-paper-reading-agent/main/install.sh | bash
 ```
 
 This automatically installs Python 3.12+, uv, HuggingFace CLI, and sets up ppagent with a default config.
@@ -37,7 +37,7 @@ This automatically installs Python 3.12+, uv, HuggingFace CLI, and sets up ppage
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/PhDeasy-org/your-paper-reading-agent.git
 cd daily-paper-reading
 uv sync
 ```

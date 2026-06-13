@@ -203,7 +203,8 @@ def render_markdown_with_math(text: str) -> str:
     # Match block math: $$...$$ and \[...\]
     block_pattern = re.compile(r'(\$\$.*?\$\$|\\\[.*?\\\])', re.DOTALL)
     # Match inline math: $...$ and \(...\)
-    inline_pattern = re.compile(r'(\$(?!\s)[^\$\n]+?(?<!\s)\$|\\\(.*?\\\))')
+    # Allow single newlines but not double newlines (paragraphs) to support multiline inline formulas
+    inline_pattern = re.compile(r'(\$(?!\s)(?:[^\$\n]|\n(?!\n))+?(?<!\s)\$|\\\(.*?\\\))')
 
     temp_text = text or ""
 
@@ -221,7 +222,10 @@ def render_markdown_with_math(text: str) -> str:
 
     # Restore math blocks
     for placeholder, original in placeholders.items():
-        html = html.replace(placeholder, original)
+        # Escape '<', '>', and '&' inside the math block to prevent the browser from
+        # interpreting them as HTML tags or entities, while keeping them valid for MathJax.
+        escaped_original = original.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        html = html.replace(placeholder, escaped_original)
 
     return html
 
@@ -360,7 +364,6 @@ class Assembler:
             "finder_narrative": finder_data.get("narrative", ""),
             "usage": report.usage,
             "cost_report": report.cost_report,
-            "price_table": LLM_PRICING,
         }
 
     def _render_md(self, report: PaperReport, writer_data: dict, finder_data: dict) -> str:
@@ -458,7 +461,7 @@ class Assembler:
     }}
   }};
 </script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" defer></script>
 </head>
 <body>
 {body}

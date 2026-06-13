@@ -123,7 +123,7 @@ else
     else
         info "Installing to: $INSTALL_DIR"
         if command -v git &>/dev/null; then
-            git clone "${PPAGENT_REPO:-.}" "$INSTALL_DIR" 2>/dev/null || {
+            git clone "${PPAGENT_REPO:-https://github.com/PhDeasy-org/your-paper-reading-agent.git}" "$INSTALL_DIR" 2>/dev/null || {
                 warn "Git clone failed. Creating project directory..."
                 mkdir -p "$INSTALL_DIR"
             }
@@ -186,16 +186,19 @@ COMPLETION_INSTALLED=false
 
 # Detect shell and install completion via Typer's built-in mechanism
 if [[ -n "${ZSH_VERSION:-}" ]] || [[ "$SHELL" == *"zsh"* ]]; then
-    # zsh completion
+    # zsh completion — generate via Python so shellingham can't mis-detect bash
+    # (install.sh itself runs under bash, which would cause --show-completion to
+    # emit bash-format code into the zsh completion file).
     COMPLETION_FILE="$HOME/.zfunc/_ppagent"
     if [[ -f "$COMPLETION_FILE" ]]; then
         success "zsh completion already installed"
         COMPLETION_INSTALLED=true
     else
         mkdir -p "$HOME/.zfunc"
-        # Source the PATH so ppagent is available for completion generation
-        export PATH="$PPAGENT_BIN:$PATH"
-        if ppagent --show-completion > "$COMPLETION_FILE" 2>/dev/null; then
+        if uv run python -c "
+from typer._completion_shared import get_completion_script
+print(get_completion_script(prog_name='ppagent', complete_var='_PPAGENT_COMPLETE', shell='zsh'))
+" > "$COMPLETION_FILE" 2>/dev/null; then
             # Ensure .zfunc is in fpath
             if ! grep -q '.zfunc' "$SHELL_RC" 2>/dev/null; then
                 echo "" >> "$SHELL_RC"
@@ -217,8 +220,10 @@ elif [[ -n "${BASH_VERSION:-}" ]] || [[ "$SHELL" == *"bash"* ]]; then
         COMPLETION_INSTALLED=true
     else
         mkdir -p "$HOME/.bash_completions"
-        export PATH="$PPAGENT_BIN:$PATH"
-        if ppagent --show-completion > "$COMPLETION_FILE" 2>/dev/null; then
+        if uv run python -c "
+from typer._completion_shared import get_completion_script
+print(get_completion_script(prog_name='ppagent', complete_var='_PPAGENT_COMPLETE', shell='bash'))
+" > "$COMPLETION_FILE" 2>/dev/null; then
             if ! grep -q 'ppagent.bash' "$SHELL_RC" 2>/dev/null; then
                 echo "" >> "$SHELL_RC"
                 echo "# ppagent shell completion" >> "$SHELL_RC"
@@ -232,14 +237,16 @@ elif [[ -n "${BASH_VERSION:-}" ]] || [[ "$SHELL" == *"bash"* ]]; then
     fi
 elif [[ -n "${FISH_VERSION:-}" ]] || [[ "$SHELL" == *"fish"* ]]; then
     # fish completion
-    export PATH="$PPAGENT_BIN:$PATH"
     COMPLETION_FILE="$HOME/.config/fish/completions/ppagent.fish"
     if [[ -f "$COMPLETION_FILE" ]]; then
         success "fish completion already installed"
         COMPLETION_INSTALLED=true
     else
         mkdir -p "$HOME/.config/fish/completions"
-        if ppagent --show-completion > "$COMPLETION_FILE" 2>/dev/null; then
+        if uv run python -c "
+from typer._completion_shared import get_completion_script
+print(get_completion_script(prog_name='ppagent', complete_var='_PPAGENT_COMPLETE', shell='fish'))
+" > "$COMPLETION_FILE" 2>/dev/null; then
             success "fish completion installed at $COMPLETION_FILE"
             COMPLETION_INSTALLED=true
         else
@@ -259,24 +266,5 @@ fi
 echo ""
 echo -e "${BOLD}${GREEN}Installation complete!${NC}"
 echo ""
-echo -e "  ${BOLD}Next steps:${NC}"
-echo ""
-echo "  1. Reload your shell:"
-echo -e "     ${BLUE}source $SHELL_RC${NC}"
-echo ""
-echo "  2. Configure your LLM API key:"
-echo -e "     ${BLUE}edit $INSTALL_DIR/config/settings.toml${NC}"
-echo -e "     or: ${BLUE}export PPA_LLM_API_KEY=sk-...${NC}"
-echo ""
-echo "  3. Customize your research profile:"
-echo -e "     ${BLUE}edit $INSTALL_DIR/config/profile.md${NC}"
-echo ""
-echo "  4. Start using ppagent:"
-echo -e "     ${BLUE}ppagent search${NC}           # discover papers"
-echo -e "     ${BLUE}ppagent report <paper>${NC}   # generate a report"
-echo -e "     ${BLUE}ppagent run${NC}              # full pipeline"
-echo -e "     ${BLUE}ppagent run --schedule${NC}   # auto-fetch mode"
-echo ""
-echo -e "  Run ${BLUE}ppagent --help${NC} for all commands."
-echo -e "  Tab completion is enabled (reload shell first)."
+echo -e "  Run ${BLUE}ppagent config${NC} to set up your API keys and research profile."
 echo ""

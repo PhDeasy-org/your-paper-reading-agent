@@ -140,8 +140,9 @@ class PaperPipeline:
         *,
         date: str | None = None,
         limit: int | None = None,
+        prompt_replace: bool = True,
     ) -> list[PaperReport]:
-        """Full pipeline: search + report for each relevant paper."""
+        """Full pipeline: search + report generation."""
         papers = self.search(date=date, limit=limit)
         if not papers:
             logger.info("No papers to process.")
@@ -149,10 +150,18 @@ class PaperPipeline:
 
         reports: list[PaperReport] = []
         for paper in papers:
-            # Skip if already generated today
-            if self.storage.report_exists(paper.id):
-                logger.info("Skipping %s — report already exists", paper.id)
-                continue
+            if self.storage.report_exists(paper.title, paper.published_at):
+                if prompt_replace:
+                    try:
+                        answer = input(f"Report for \"{paper.title}\" already exists. Regenerate? [y/N] ").strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        answer = ""
+                    if answer != "y":
+                        logger.info("Skipping %s", paper.title)
+                        continue
+                else:
+                    logger.info("Skipping %s — report already exists", paper.title)
+                    continue
 
             try:
                 report = self.report(paper.id)

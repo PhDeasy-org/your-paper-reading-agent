@@ -11,6 +11,7 @@ from rich.table import Table
 
 from ppagent import __version__
 from ppagent.config import AppConfig, load_config, PROJECT_ROOT
+from ppagent.storage import Storage
 
 app = typer.Typer(
     name="ppagent",
@@ -130,8 +131,10 @@ def search(
 def report(
     paper_id: str = typer.Argument(..., help="Paper ID (e.g. 2506.12345) or arXiv URL."),
     output_dir: Optional[str] = typer.Option(None, "--output", "-o", help="Output directory."),
+    force: bool = typer.Option(False, "--force", "-f", help="Regenerate without prompting if report already exists."),
 ) -> None:
     """Generate a detailed report for a specific paper."""
+    from ppagent import hf
     from ppagent.pipeline import PaperPipeline
 
     cfg = _load()
@@ -145,13 +148,24 @@ def report(
     console.print(f"[bold]Generating report for paper:[/bold] {paper_id}")
 
     pipeline = PaperPipeline(cfg)
+
+    if not force:
+        try:
+            paper = hf.paper_info(paper_id)
+        except Exception:
+            paper = None
+        if paper and pipeline.storage.report_exists(paper.title, paper.published_at):
+            if not typer.confirm(f"Report for \"{paper.title}\" already exists. Regenerate?"):
+                console.print("[yellow]Skipped.[/yellow]")
+                raise typer.Exit(0)
+
     try:
         paper_report = pipeline.report(paper_id)
     except Exception as exc:
         console.print(f"[red]Report generation failed:[/red] {exc}")
         raise typer.Exit(1)
 
-    console.print(f"[green]Report generated![/green] Output: {cfg.output_dir / paper_report.paper.id}")
+    console.print(f"[green]Report generated![/green] Output: {cfg.output_dir / Storage._safe_filename(paper_report.paper.title, paper_report.paper.published_at)}")
 
 
 # ─── run ─────────────────────────────────────────────────────────────────────
@@ -162,6 +176,7 @@ def run(
     date: Optional[str] = typer.Option(None, "--date", "-d", help="Paper date."),
     limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max papers to fetch."),
     schedule: bool = typer.Option(False, "--schedule", "-s", help="Enable auto-fetch scheduler."),
+    force: bool = typer.Option(False, "--force", "-f", help="Regenerate without prompting if reports already exist."),
 ) -> None:
     """Run the full pipeline: search + report generation."""
     if schedule:
@@ -187,14 +202,14 @@ def run(
 
     pipeline = PaperPipeline(cfg)
     try:
-        reports = pipeline.run(date=date, limit=limit)
+        reports = pipeline.run(date=date, limit=limit, prompt_replace=not force)
     except Exception as exc:
         console.print(f"[red]Pipeline failed:[/red] {exc}")
         raise typer.Exit(1)
 
     console.print(f"\n[green]Done![/green] Generated {len(reports)} report(s).")
     for r in reports:
-        console.print(f"  - {r.paper.title} → {cfg.output_dir / r.paper.id}")
+        console.print(f"  - {r.paper.title} → {cfg.output_dir / Storage._safe_filename(r.paper.title, r.paper.published_at)}")
 
 
 # ─── config commands ─────────────────────────────────────────────────────────

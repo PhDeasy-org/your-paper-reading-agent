@@ -15,3 +15,6 @@ output/
 
 # Secrets
 config/settings.toml
+
+# misc
+.qoder

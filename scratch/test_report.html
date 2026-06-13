@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ paper.title }} — ppagent Report</title>
+<title>2606.01075 — ppagent Report</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -854,7 +854,7 @@
     }
   };
 </script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
 </head>
 <body>
 
@@ -883,12 +883,12 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/><line x1="12" x2="12" y1="7" y2="12"/><line x1="12" x2="16" y1="12" y2="14"/></svg>
       Previous Work
     </a>
-    {% if finder_narrative %}
+    
     <a href="#landscape" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
       Landscape
     </a>
-    {% endif %}
+    
     <a href="#method" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
       Method
@@ -905,12 +905,12 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/></svg>
       Related Papers
     </a>
-    {% if cost_report %}
+    
     <a href="#cost-report" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
       Cost Report
     </a>
-    {% endif %}
+    
   </nav>
   
   <div class="sidebar-footer">
@@ -928,15 +928,15 @@
 
 <main class="main-content">
   <header class="main-header">
-    <h1>{{ paper.title }}</h1>
-    {% if affiliations %}
-    <p class="paper-subtitle">{{ affiliations | join(' &bull; ') }}</p>
-    {% endif %}
+    <h1>2606.01075</h1>
+    
+    <p class="paper-subtitle">Google Research &bull; Google &bull; Harvard University &bull; Virginia Tech</p>
+    
   </header>
 
   <div class="tldr-card">
     <div class="tldr-badge">TL;DR</div>
-    <div class="tldr-content">{{ tldr.content }}</div>
+    <div class="tldr-content">Under a strict closed-loop self-evolution formulation where only an unlabeled prompt set and a base model are available, this paper systematically compares increasingly structured self-evolution strategies (single-round verification, multi-turn revision, iterative training, curriculum learning) against oracle-supervised preference optimization. On Knights and Knaves logical reasoning tasks, self-evolution consistently improves over the base model but plateaus and leaves a non-trivial generalization gap to oracle supervision, with the exception of multi-turn revision at 12B scale nearly matching oracle performance. On real-world reasoning benchmarks, gains are modest and diminishing, highlighting that internally generated supervision alone remains insufficient to replace verifiable rewards or curated ground-truth solutions.</div>
   </div>
 
   <section id="overview" class="content-card">
@@ -949,9 +949,9 @@
       <div class="info-item">
         <div class="info-label">Paper Link</div>
         <div class="info-value">
-          <a href="{{ paper.arxiv_url }}" target="_blank" class="btn-link arxiv-badge">
+          <a href="https://arxiv.org/abs/2606.01075" target="_blank" class="btn-link arxiv-badge">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
-            arXiv:{{ paper.id }}
+            arXiv:2606.01075
           </a>
         </div>
       </div>
@@ -959,7 +959,7 @@
       <div class="info-item">
         <div class="info-label">Hugging Face</div>
         <div class="info-value">
-          <a href="{{ paper.hf_url }}" target="_blank" class="btn-link hf-badge">
+          <a href="https://huggingface.co/papers/2606.01075" target="_blank" class="btn-link hf-badge">
             🤗 HF Paper Page
           </a>
         </div>
@@ -968,40 +968,53 @@
       <div class="info-item">
         <div class="info-label">Published At</div>
         <div class="info-value date-value">
-          <strong>{{ paper.published_at.strftime('%Y-%m-%d') if paper.published_at else 'Unknown' }}</strong>
+          <strong>Unknown</strong>
         </div>
       </div>
       
-      {% if keywords %}
+      
       <div class="info-item full-width">
         <div class="info-label">Keywords</div>
         <div class="info-value tags-list">
-          {% for keyword in keywords %}
-          <span class="tag keyword-tag">{{ keyword }}</span>
-          {% endfor %}
+          
+          <span class="tag keyword-tag">self-evolution</span>
+          
+          <span class="tag keyword-tag">closed-loop learning</span>
+          
+          <span class="tag keyword-tag">large language models</span>
+          
+          <span class="tag keyword-tag">reasoning</span>
+          
+          <span class="tag keyword-tag">preference optimization</span>
+          
+          <span class="tag keyword-tag">generator-verifier game</span>
+          
+          <span class="tag keyword-tag">Knights and Knaves</span>
+          
+          <span class="tag keyword-tag">generalization gap</span>
+          
         </div>
       </div>
-      {% endif %}
       
-      {% if affiliations %}
+      
+      
       <div class="info-item full-width">
         <div class="info-label">Affiliations</div>
         <div class="info-value tags-list">
-          {% for aff in affiliations %}
-          <span class="tag affiliation-tag">{{ aff }}</span>
-          {% endfor %}
+          
+          <span class="tag affiliation-tag">Google Research</span>
+          
+          <span class="tag affiliation-tag">Google</span>
+          
+          <span class="tag affiliation-tag">Harvard University</span>
+          
+          <span class="tag affiliation-tag">Virginia Tech</span>
+          
         </div>
       </div>
-      {% endif %}
       
-      {% if paper.authors %}
-      <div class="info-item full-width">
-        <div class="info-label">Authors</div>
-        <div class="info-value authors-list">
-          {{ paper.authors | join(', ') }}
-        </div>
-      </div>
-      {% endif %}
+      
+      
     </div>
   </section>
 
@@ -1011,7 +1024,7 @@
       Benchmarks
     </h2>
     <div class="markdown-body">
-      {{ benchmarks.content | markdown }}
+      <p>Knights and Knaves (KK) logical reasoning benchmark (Xie et al., 2024), OpenThoughts3 (Guha et al., 2025) for mathematical reasoning training, GSM8K (Cobbe et al., 2021), MATH500 subset of MATH (Hendrycks et al., 2021), MATHHard (difficulty level 5 of MATH), TabMWP (Lu et al., 2022)</p>
     </div>
   </section>
 
@@ -1021,21 +1034,21 @@
       Previous Work &amp; Limitations
     </h2>
     <div class="markdown-body">
-      {{ previous_works.content | markdown }}
+      <p>The paper situates itself in the context of post-training techniques for improving LLM reasoning, including <a href="https://arxiv.org/abs/2109.07958">Supervised Finetuning (SFT)</a>, <a href="https://arxiv.org/abs/2203.02155">Reinforcement Learning from Human Feedback (RLHF)</a>, and <a href="https://arxiv.org/abs/2403.04652">Reinforcement Learning from Verifiable Rewards (RLVR)</a>. Many recent self-evolution methods leverage internal model signals: <a href="https://arxiv.org/abs/2508.05004">R-Zero</a> uses online RL without external data; <a href="https://arxiv.org/abs/2505.19590">INTUITOR</a> employs self-certainty as reward; <a href="https://arxiv.org/abs/2509.07414">LSP</a> and <a href="https://arxiv.org/abs/2504.05812">EMPO</a> use intrinsic model-based rewards; <a href="https://arxiv.org/abs/2505.03335">Absolute Zero (AZR)</a> builds an online self-play RL pipeline with code execution, but still relies on an external executor. Prior work on self-verification includes <a href="https://arxiv.org/abs/2405.20322">Piterbarg et al.</a>, <a href="https://arxiv.org/abs/2505.21444">Shafayat et al.</a>, <a href="https://arxiv.org/abs/2502.05605">Zeng et al.</a>, and <a href="https://arxiv.org/abs/2506.17219">Zhang et al.</a>. Studies like <a href="https://arxiv.org/abs/2412.02674">Song et al.</a> and <a href="https://arxiv.org/abs/2507.00075">Sun et al.</a> highlight the generator-verifier gap; <a href="https://arxiv.org/abs/2506.17219">Zhang et al. (2025c)</a> show that rejection-sampling pipelines are insufficient for sustained self-improvement. Risks of learning from synthetic data such as <a href="https://arxiv.org/abs/2407.01413">model collapse</a> (<a href="https://arxiv.org/abs/2410.22812">Dey &amp; Donoho</a>, <a href="https://www.nature.com/articles/s41586-024-07566-y">Shumailov et al.</a>) and <a href="https://arxiv.org/abs/2503.13016">theoretical barriers</a> further motivate the need to rigorously measure the gap between closed-loop self-evolution and oracle supervision. Orthogonal test-time scaling methods (<a href="https://arxiv.org/abs/2305.20050">Lightman et al.</a>, <a href="https://arxiv.org/abs/2503.24235">Zhang et al.</a>) and self-refinement techniques (<a href="https://arxiv.org/abs/2303.17651">Madaan et al.</a>, <a href="https://arxiv.org/abs/2409.12917">Kumar et al.</a>) complement this work but differ by focusing on inference-time or online improvements rather than offline parameter updates under a strict closed-loop constraint.</p>
     </div>
   </section>
 
-  {% if finder_narrative %}
+  
   <section id="landscape" class="content-card">
     <h2>
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
       Related Work Landscape
     </h2>
     <div class="markdown-body">
-      {{ finder_narrative | markdown }}
+      <p>This paper is highly relevant to generator-verifier dynamics and closed-loop training. It is closely related to SPIN (Self-Play Fine-Tuning) and AZR (Absolute Zero).</p>
     </div>
   </section>
-  {% endif %}
+  
 
   <section id="method" class="content-card">
     <h2>
@@ -1043,7 +1056,13 @@
       Method
     </h2>
     <div class="markdown-body">
-      {{ method.content | markdown }}
+      <p>The paper instantiates a unified offline <strong>generator–verifier (GV) game</strong> where a single base model $\mathcal{M}$ acts as both generator $\mathcal{G}$ and verifier $\mathcal{V}$ via different system prompts. Given an unlabeled prompt set $\mathcal{D}$, the generator produces $k$ candidate solutions $\{\hat{y}_1,\dots,\hat{y}_k\}$ per query $q$, and the verifier outputs binary judgments $\mathcal{V}(q,\hat{y}_i) \in \{\text{Correct},\text{Incorrect}\}$. Preference pairs $(y_w,y_l)$ are extracted when $\mathcal{V}$ labels one response correct and another incorrect. To reduce noise, <strong>thresholded majority voting</strong> is applied: the verifier is queried $n$ times per candidate, an empirical correctness rate $\hat{p}$ is computed, and a candidate is labeled positive if $\hat{p} \ge \tau$, negative if $1-\hat{p} \ge \tau$, and discarded otherwise (with $\tau \in [0.5,0.8]$). The resulting preference data is used to fine-tune with <strong><a href="https://arxiv.org/abs/2305.18290">Direct Preference Optimization (DPO)</a></strong> by minimizing $\mathcal{L}_{\text{DPO}}(\pi_\theta;\pi_{\text{ref}}) = -\mathbb{E}\big[\log\sigma(\beta\log\frac{\pi_\theta(y_w|x)}{\pi_{\text{ref}}(y_w|x)} - \beta\log\frac{\pi_\theta(y_l|x)}{\pi_{\text{ref}}(y_l|x)})\big]$. </p>
+<p>Four self-evolution strategies are compared: 
+- <strong>SimpleSE</strong> (single-round): direct verification without feedback ($T=1$).
+- <strong>RevisionSE</strong> (multi-turn): the verifier provides textual feedback, and the generator refines output iteratively; a preference pair is formed iff $\mathcal{V}$ rejects an initial response and accepts a later revision ($\hat{y}^{(t)}\text{ incorrect} \to \hat{y}^{(t+1)}\text{ correct}$).
+- <strong>Iterative SE</strong>: repeatedly apply the GV game and DPO over rounds, using the same prompt set $\mathcal{D}$: $\mathcal{P}_t = \text{GV}(\mathcal{M}_{t-1},\mathcal{D},T)$, $\mathcal{M}_t = \text{Finetune}(\mathcal{M}_{t-1},\mathcal{P}_t)$.
+- <strong>Curriculum SE</strong>: partition prompts by difficulty (e.g., number of people in KK), train on easy splits first before progressing to harder ones.</p>
+<p>For all configurations, an <strong>oracle verifier</strong> that uses ground-truth answers and exact-match is also evaluated to quantify the upper bound. The framework is offline; all preference data is generated once per round, and models are instruction-tuned variants (Gemma-3-it, Qwen-2.5-Instruct) to enable the dual role.</p>
     </div>
   </section>
 
@@ -1053,7 +1072,20 @@
       Performance Evaluation
     </h2>
     <div class="markdown-body">
-      {{ evaluation.content | markdown }}
+      <p><strong>Knights and Knaves (KK) results:</strong>
+- Gemma 3 4B: base accuracy 31.0%. SimpleSE $\tau=0.6$: 40.7%; RevisionSE: 42.2%; Iterative SE (3 rounds): 44.1%; Curriculum SE: 44.8%. Oracle verifier after single round: 46.6%; with additional oracle round after SE iterations: 53.2–53.3%. Thus, a persistent gap of ~8–13% to oracle supervision remains.
+- Gemma 3 12B: base 47.5%. SimpleSE $\tau=0.6$: 51.1%; RevisionSE: 52.8%, nearly matching oracle verifier at 53.6% (only ~0.8% gap). Oracle verifier after iterative SE: 52.6–53.3%.
+- Qwen 2.5 7B: base 17.3%, SimpleSE 19.4%, RevisionSE 19.4%, Oracle 30.6%, showing similar trends.
+- Curriculum learning consistently outperforms random mixing of difficulty levels, both for self-evolution and oracle settings.
+- Cost analysis: scaling verifier passes ($n_2$) is more impact-per-token than scaling generator samples ($n_1$); threshold $\tau=0.7$ strikes the best precision–recall balance (e.g., 41.7% for 4B).</p>
+<p><strong>General reasoning benchmarks (OpenThoughts3 training):</strong>
+- Gemma 3 4B: on GSM8K 89.2% → 89.0% (negligible); MATH500 75.8% → 77.4%; MATHHard 53.7% → 55.1%; TabMWP 84.5% → 87.4%; KK 31.0% → 33.2%. Improvements are modest compared to KK gains, especially for open-ended tasks.
+- Gemma 3 12B and Qwen2.5-7B show similar small gains, e.g., Qwen 7B MATH500 73.5% → 76.0%.
+- Comparison with online self-evolution baselines (INTUITOR, AZR): SimpleSE (offline) achieves competitive or better performance without external executors, e.g., Gemma 4B beats INTUITOR and AZR on several benchmarks.
+- Scaling data size (5k–40k preference pairs) shows diminishing returns; performance plateaus or slightly degrades for TabMWP and KK beyond 20k.
+- Pass@1 vs. Pass@32 analysis: SimpleSE improves Pass@1 (e.g., 31.0% → 40.7%) but Pass@32 remains nearly unchanged (~78%), indicating sharpening of existing solution paths rather than discovering new capabilities.
+- Verifier recall bottleneck: Gemma 4B recall improves from 52% to 62% after one SE round, while Gemma 1B recall remains low (36%), explaining limited improvement for smaller models.
+- RevisionSE step analysis: successful corrections typically require 3–5 revision steps; however, the process also introduces noise (e.g., 12% of initially correct solutions become incorrect after one revision for 4B), limiting gains for weaker models.</p>
     </div>
   </section>
 
@@ -1063,7 +1095,36 @@
       Critical Analysis
     </h2>
     <div class="markdown-body">
-      {{ critique.content | markdown }}
+      <p>The paper presents a thorough empirical investigation of closed-loop self-evolution, but several methodological and reporting issues weaken its conclusions. The comparisons to online methods are not controlled, statistical significance is not reported, and the analysis of bottlenecks relies on limited data. Generalizability to other models and tasks remains unverified.</p>
+<ul>
+<li>
+<p><strong>[MEDIUM]</strong> The comparison with online self-evolution methods (INTUITOR, AZR) is not controlled; models differ in base architecture, training regime, and access to external tools. Claims that SimpleSE outperforms these methods may be misleading without direct, fair comparisons.</p>
+</li>
+<li>
+<p><strong>[MEDIUM]</strong> The paper does not report statistical significance tests for key comparisons (e.g., RevisionSE vs. oracle, SimpleSE vs. base model), which weakens the reliability of claimed performance gaps and the conclusion of near-oracle performance.</p>
+</li>
+<li>
+<p><strong>[MEDIUM]</strong> The verifier accuracy on MATH is much higher than on KK (≈85% vs. 60% for Gemma 4B), yet self-evolution gains are much smaller on MATH. This discrepancy is not sufficiently discussed, limiting the generalizability of the findings.</p>
+</li>
+<li>
+<p><strong>[LOW]</strong> The evidence that verifier recall is a bottleneck relies on a small sample of 100 examples (Appendix A.2); conclusions drawn from this sample may not be robust.</p>
+</li>
+<li>
+<p><strong>[MEDIUM]</strong> The experiments use only two model families (Gemma and Qwen) and only instruction-tuned variants; generalizability to other LLMs, base models, or different architectures remains unverified.</p>
+</li>
+<li>
+<p><strong>[LOW]</strong> The paper focuses exclusively on DPO for preference learning; other alignment algorithms (e.g., PPO, KTO) might interact differently with self-generated data, but are not explored.</p>
+</li>
+<li>
+<p><strong>[LOW]</strong> The iterative SE setting reuses the same prompt set across rounds without reporting training-set performance or overfitting analysis, which could mask overfitting issues.</p>
+</li>
+<li>
+<p><strong>[LOW]</strong> Curriculum learning evaluation only considers a simple two-stage easy-to-hard curriculum on KK; more nuanced curricula or curricula on other tasks are not studied, limiting the generality of the claim that curriculum helps SE.</p>
+</li>
+<li>
+<p><strong>[LOW]</strong> The cost analysis in Figure 3 reports average accuracy across all thresholds, which may obscure performance at optimal thresholds; the reported trade-offs might not directly translate to practical settings where one would choose the best threshold.</p>
+</li>
+</ul>
     </div>
   </section>
 
@@ -1073,27 +1134,15 @@
       Related Papers
     </h2>
     
-    {% if related_works %}
-    <div class="related-papers-list">
-      {% for rp in related_works %}
-      <a href="{{ rp.arxiv_url }}" target="_blank" class="related-paper-item">
-        <span class="related-paper-title">{{ rp.title }}</span>
-        <span class="related-paper-meta">
-          <span class="arxiv-id-label">arXiv:{{ rp.id }}</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
-        </span>
-      </a>
-      {% endfor %}
-    </div>
-    {% else %}
+    
     <div class="empty-state">
       <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon"><circle cx="12" cy="12" r="10"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
       <p>No related papers found.</p>
     </div>
-    {% endif %}
+    
   </section>
 
-  {% if cost_report %}
+  
   <section id="cost-report" class="content-card">
     <h2>
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
@@ -1104,23 +1153,23 @@
     <div class="cost-dashboard">
       <div class="cost-summary-card">
         <div class="cost-summary-label">Total Cost</div>
-        <div class="cost-summary-value">${{ "%.6f"|format(cost_report.total_cost) }}</div>
-        <div class="cost-summary-sub">Model: <span>{{ cost_report.model }}</span></div>
-        <div class="cost-summary-badge">{{ cost_report.provider }}</div>
+        <div class="cost-summary-value">$0.000990</div>
+        <div class="cost-summary-sub">Model: <span>deepseek/deepseek-r1</span></div>
+        <div class="cost-summary-badge">open_router</div>
       </div>
       
       <div class="cost-details-panel">
         <div class="token-usage-bar">
-          {% set total_tok = usage.prompt_tokens + usage.completion_tokens %}
-          {% set input_pct = (usage.prompt_tokens / total_tok * 100)|round|int if total_tok > 0 else 50 %}
-          {% set output_pct = 100 - input_pct %}
+          
+          
+          
           <div class="bar-track">
-            <div class="bar-fill input-fill" style="width: {{ input_pct }}%;" title="Input Tokens: {{ input_pct }}%"></div>
-            <div class="bar-fill output-fill" style="width: {{ output_pct }}%;" title="Output Tokens: {{ output_pct }}%"></div>
+            <div class="bar-fill input-fill" style="width: 79%;" title="Input Tokens: 79%"></div>
+            <div class="bar-fill output-fill" style="width: 21%;" title="Output Tokens: 21%"></div>
           </div>
           <div class="bar-legend">
-            <span class="legend-item"><span class="dot input-dot"></span> Input: {{ input_pct }}%</span>
-            <span class="legend-item"><span class="dot output-dot"></span> Output: {{ output_pct }}%</span>
+            <span class="legend-item"><span class="dot input-dot"></span> Input: 79%</span>
+            <span class="legend-item"><span class="dot output-dot"></span> Output: 21%</span>
           </div>
         </div>
         
@@ -1128,37 +1177,37 @@
           <div class="cost-detail-row">
             <span class="detail-label">Input Tokens</span>
             <span class="detail-value">
-              <strong>{{ usage.prompt_tokens }}</strong>
-              <span class="detail-price">${{ "%.6f"|format(cost_report.input_cost) }}</span>
+              <strong>12500</strong>
+              <span class="detail-price">$0.000140</span>
             </span>
           </div>
           
           <div class="cost-detail-row">
             <span class="detail-label">Output Tokens</span>
             <span class="detail-value">
-              <strong>{{ usage.completion_tokens }}</strong>
-              <span class="detail-price">${{ "%.6f"|format(cost_report.output_cost) }}</span>
+              <strong>3400</strong>
+              <span class="detail-price">$0.000850</span>
             </span>
           </div>
           
           <div class="cost-detail-row total-row">
             <span class="detail-label">Total Tokens</span>
             <span class="detail-value">
-              <strong>{{ usage.total_tokens }}</strong>
+              <strong>15900</strong>
             </span>
           </div>
         </div>
       </div>
     </div>
   </section>
-  {% endif %}
+  
 
   <footer class="footer">
     <div>
-      Generated by <strong>ppagent</strong> on {{ generated_at.strftime('%Y-%m-%d %H:%M') }}
+      Generated by <strong>ppagent</strong> on 2026-06-13 01:44
     </div>
     <div>
-      Model: <code>{{ model_used }}</code>
+      Model: <code>deepseek-v4-pro</code>
     </div>
   </footer>
 </main>

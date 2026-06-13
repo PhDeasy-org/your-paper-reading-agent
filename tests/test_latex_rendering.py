@@ -641,3 +641,22 @@ class TestRegressionFromActualReports:
         assert "$\\tau=0.6$" in html
         assert "31.0%" in html
         assert "40.7%" in html
+
+    def test_multiline_inline_math(self):
+        """Inline math containing a single newline must be preserved correctly."""
+        text = (
+            "The objective is $\\mathcal{L}_{\\text{pre}} = -\\sum_{i,j} \\log p_{\\theta \\oplus \\alpha\n"
+            "\\Delta_i^{\\text{pre}}}(z_{i,j} \\mid q_i, z_{i,<j>})$."
+        )
+        html = render_markdown_with_math(text)
+        assert "&lt;j&gt;" in html
+        assert "<!--MATH_PLACEHOLDER" not in html
+        assert "\\mathcal{L}_{\\text{pre}}" in html
+
+    def test_math_with_html_special_chars(self):
+        """LaTeX expressions containing <, >, and & must have those characters escaped to prevent browser tag parsing."""
+        text = "Comparison $a < b$ and $c > d$ and alignment $x & y$."
+        html = render_markdown_with_math(text)
+        assert "$a &lt; b$" in html
+        assert "$c &gt; d$" in html
+        assert "$x &amp; y$" in html
