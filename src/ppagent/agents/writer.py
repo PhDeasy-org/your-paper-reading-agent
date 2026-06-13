@@ -36,6 +36,7 @@ class WriterAgent(AgentBase):
     description = "Analyzes paper content and produces structured report sections."
 
     def run(self, *, content: PaperContent) -> AgentResult:
+        self.llm.reset_usage()
         user_prompt = f"""\
 ## Paper: {content.paper.title}
 
@@ -58,7 +59,7 @@ class WriterAgent(AgentBase):
             )
         except Exception as exc:
             logger.error("Writer LLM call failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc))
+            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
 
         return AgentResult(
             agent_name=self.name,
@@ -72,4 +73,5 @@ class WriterAgent(AgentBase):
                 "method": output.method_details,
                 "evaluation": output.performance_evaluation,
             },
+            usage=self.llm.get_usage(),
         )

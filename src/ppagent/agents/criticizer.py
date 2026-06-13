@@ -52,6 +52,7 @@ class CriticizerAgent(AgentBase):
         content: PaperContent,
         writer_sections: dict[str, Any] | None = None,
     ) -> AgentResult:
+        self.llm.reset_usage()
         # Include writer's analysis for additional context
         writer_context = ""
         if writer_sections:
@@ -83,7 +84,7 @@ class CriticizerAgent(AgentBase):
             )
         except Exception as exc:
             logger.error("Criticizer LLM call failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc))
+            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
 
         # Format findings into a readable critique
         critique_parts = [output.summary]
@@ -98,4 +99,5 @@ class CriticizerAgent(AgentBase):
                 "findings_count": len(output.findings),
                 "high_severity": sum(1 for f in output.findings if f.severity == "high"),
             },
+            usage=self.llm.get_usage(),
         )

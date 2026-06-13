@@ -106,6 +106,7 @@ class FinderAgent(AgentWithTools):
             return f"Paper info failed: {exc}"
 
     def run(self, *, content: PaperContent) -> AgentResult:
+        self.llm.reset_usage()
         user_prompt = f"""\
 ## Paper: {content.paper.title}
 
@@ -131,7 +132,7 @@ and the problem domain. Then summarize the related work landscape.\
             narrative = self._run_with_tools(messages)
         except Exception as exc:
             logger.error("Finder agent failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc))
+            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
 
         # Now do a structured call to extract the final output
         final_prompt = f"""\
@@ -169,4 +170,5 @@ related papers (with paper_id and title).\
                 "narrative": output.narrative or narrative,
                 "related_works": related_papers,
             },
+            usage=self.llm.get_usage(),
         )

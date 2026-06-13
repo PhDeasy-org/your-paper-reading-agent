@@ -60,6 +60,8 @@ class PaperReport(BaseModel):
     related_works: list[Paper] = Field(default_factory=list)
     generated_at: datetime = Field(default_factory=datetime.now)
     model_used: str = ""
+    usage: dict[str, int] = Field(default_factory=dict)
+    cost_report: dict[str, Any] | None = None
 
 
 class AgentResult(BaseModel):

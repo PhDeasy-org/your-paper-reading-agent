@@ -43,6 +43,7 @@ class SearcherAgent(AgentBase):
         profile: str,
         threshold: float | None = None,
     ) -> AgentResult:
+        self.llm.reset_usage()
         threshold = threshold or self.config.search.relevance_threshold
 
         # Build paper summaries for the LLM
@@ -67,7 +68,7 @@ Please score each paper's relevance to this user profile.\
             )
         except Exception as exc:
             logger.error("Searcher LLM call failed: %s", exc)
-            return AgentResult(agent_name=self.name, success=False, error=str(exc))
+            return AgentResult(agent_name=self.name, success=False, error=str(exc), usage=self.llm.get_usage())
 
         # Build score lookup
         score_map = {sp.paper_id: sp for sp in output.scored_papers}
@@ -93,6 +94,7 @@ Please score each paper's relevance to this user profile.\
                 "total_scored": len(output.scored_papers),
                 "total_passed": len(result_papers),
             },
+            usage=self.llm.get_usage(),
         )
 
     def _format_papers(self, papers: list[Paper]) -> str:

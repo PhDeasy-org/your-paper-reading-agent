@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import logging
+import threading
 from typing import Any
 
 import instructor
@@ -30,6 +31,33 @@ class LLMClient:
         )
         mode = self._resolve_instructor_mode()
         self._instructor = instructor.from_openai(self._client, mode=mode)
+        self._thread_local = threading.local()
+
+    def _get_local_usage(self) -> dict[str, int]:
+        if not hasattr(self._thread_local, "usage"):
+            self._thread_local.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        return self._thread_local.usage
+
+    def reset_usage(self) -> None:
+        """Reset token usage counter for the current thread."""
+        self._thread_local.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def get_usage(self) -> dict[str, int]:
+        """Get accumulated token usage for the current thread."""
+        return dict(self._get_local_usage())
+
+    def _record_usage(self, usage: Any | None) -> None:
+        if not usage:
+            return
+        local_usage = self._get_local_usage()
+        prompt = getattr(usage, "prompt_tokens", 0) or 0
+        completion = getattr(usage, "completion_tokens", 0) or 0
+        total = getattr(usage, "total_tokens", 0) or 0
+        if total == 0:
+            total = prompt + completion
+        local_usage["prompt_tokens"] += prompt
+        local_usage["completion_tokens"] += completion
+        local_usage["total_tokens"] += total
 
     def _resolve_instructor_mode(self) -> Any:
         mode_str = self.config.instructor_mode.lower()
@@ -75,7 +103,9 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
-        return self._call_with_retry(kwargs)
+        resp = self._call_with_retry(kwargs)
+        self._record_usage(resp.usage)
+        return resp
 
     def chat_structured(
         self,
@@ -83,13 +113,15 @@ class LLMClient:
         response_model: type[BaseModel],
     ) -> BaseModel:
         """Chat completion that guarantees a structured Pydantic output via instructor."""
-        return self._instructor.chat.completions.create(
+        response, raw_completion = self._instructor.chat.completions.create_with_completion(
             model=self.config.model,
             messages=messages,
             response_model=response_model,
             temperature=self.config.temperature,
             max_tokens=self._clamp_max_tokens(None),
         )
+        self._record_usage(raw_completion.usage)
+        return response
 
     def _call_with_retry(self, kwargs: dict[str, Any]) -> openai.types.chat.ChatCompletion:
         """Call the OpenAI API with exponential backoff on transient errors."""
