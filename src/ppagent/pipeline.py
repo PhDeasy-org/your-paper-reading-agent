@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ppagent import hf, pdf
 from ppagent.agents.assembler import Assembler
+from ppagent.agents.classifier import ClassifierAgent
 from ppagent.agents.criticizer import CriticizerAgent
 from ppagent.agents.finder import FinderAgent
 from ppagent.agents.figure_selector import FigureSelectorAgent
@@ -36,6 +37,7 @@ class PaperPipeline:
             "vision": LLMClient(config.llms.vision),
             "searcher": LLMClient(config.llms.searcher),
         }
+        self.classifier = ClassifierAgent(self._clients["text"], config)
         self.searcher = SearcherAgent(self._clients["searcher"], config)
         self.writer = WriterAgent(self._clients["text"], config)
         self.finder = FinderAgent(self._clients["text"], config)
@@ -182,14 +184,28 @@ class PaperPipeline:
         else:
             self.console.print("  [dim]No PDF path available; skipping figure extraction.[/dim]")
 
+        # Classify paper type
+        self.console.print("[bold yellow]🔄 Phase 5/8: Classifying paper type...[/bold yellow]")
+        paper_type = "method"  # default fallback
+        classifier_result = self.classifier.run(content=paper_content)
+        if classifier_result.success:
+            paper_type = classifier_result.data.get("paper_type", "method")
+            confidence = classifier_result.data.get("confidence", 0.0)
+            reasoning = classifier_result.data.get("reasoning", "")
+            self.console.print(f"  [green]✓[/green] Paper classified as: [bold cyan]{paper_type}[/bold cyan] (confidence: {confidence:.0%})")
+            if reasoning:
+                self.console.print(f"    [dim]{reasoning}[/dim]")
+        else:
+            self.console.print(f"  [yellow]⚠[/yellow] Classification failed ({classifier_result.error}); defaulting to 'method'")
+
         # Run writer and finder in parallel
-        self.console.print("[bold yellow]🔄 Phase 5/7: Running Writer and Finder agents in parallel...[/bold yellow]")
+        self.console.print("[bold yellow]🔄 Phase 6/8: Running Writer and Finder agents in parallel...[/bold yellow]")
         writer_result: AgentResult | None = None
         finder_result: AgentResult | None = None
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             self.console.print(f"  Running Writer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]...")
-            writer_future = executor.submit(self.writer.run, content=paper_content)
+            writer_future = executor.submit(self.writer.run, content=paper_content, paper_type=paper_type)
             self.console.print(f"  Running Finder agent using text model: [cyan]{self.config.llms.text.model}[/cyan]...")
             finder_future = executor.submit(self.finder.run, content=paper_content)
 
@@ -215,11 +231,12 @@ class PaperPipeline:
             finder_result = AgentResult(agent_name="finder", success=False, error="Finder did not complete")
 
         # Criticizer depends on writer output
-        self.console.print("[bold yellow]🔄 Phase 6/7: Running Criticizer agent to refine report...[/bold yellow]")
+        self.console.print("[bold yellow]🔄 Phase 7/8: Running Criticizer agent to refine report...[/bold yellow]")
         self.console.print(f"  Running Criticizer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]...")
         criticizer_result = self.criticizer.run(
             content=paper_content,
             writer_sections=writer_result.data if writer_result.success else None,
+            paper_type=paper_type,
         )
         if criticizer_result.success:
             self.console.print("  [green]✓[/green] Criticizer agent completed successfully.")
@@ -227,14 +244,16 @@ class PaperPipeline:
             self.console.print(f"  [red]✗[/red] Criticizer agent failed: {criticizer_result.error}")
 
         # Assemble
-        self.console.print("[bold yellow]🔄 Phase 7/7: Assembling final report...[/bold yellow]")
+        self.console.print("[bold yellow]🔄 Phase 8/8: Assembling final report...[/bold yellow]")
         report, _, _ = self.assembler.assemble(
             paper=paper,
             writer_result=writer_result,
             finder_result=finder_result,
             criticizer_result=criticizer_result,
             figure_selector_result=figure_selector_result,
+            classifier_result=classifier_result,
             selected_figure=selected_figure,
+            paper_type=paper_type,
         )
         self.console.print(f"  [green]✓[/green] Report assembled successfully!")
 

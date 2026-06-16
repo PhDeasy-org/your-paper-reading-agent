@@ -279,15 +279,24 @@ class Assembler:
         finder_result: AgentResult,
         criticizer_result: AgentResult,
         figure_selector_result: AgentResult | None = None,
+        classifier_result: AgentResult | None = None,
         selected_figure: Figure | None = None,
+        paper_type: str = "method",
     ) -> tuple[PaperReport, str, str]:
         """Assemble all agent results into a PaperReport + rendered Markdown + HTML.
 
         Returns (report, md_content, html_content).
         """
+        from ppagent.agents.prompts import WRITER_SECTION_LABELS, DEFAULT_PAPER_TYPE
+
         w = writer_result.data if writer_result.success else {}
         f = finder_result.data if finder_result.success else {}
         c = criticizer_result.data if criticizer_result.success else {}
+
+        # Resolve section labels for this paper type
+        section_labels = WRITER_SECTION_LABELS.get(
+            paper_type, WRITER_SECTION_LABELS[DEFAULT_PAPER_TYPE]
+        )
 
         # Build sections
         metadata = ReportSection(
@@ -328,6 +337,8 @@ class Assembler:
         ]
         if figure_selector_result is not None:
             report_results.append(figure_selector_result)
+        if classifier_result is not None:
+            report_results.append(classifier_result)
 
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         for res in report_results:
@@ -340,6 +351,7 @@ class Assembler:
 
         report = PaperReport(
             paper=paper,
+            paper_type=paper_type,
             metadata=metadata,
             benchmarks=benchmarks,
             tldr=tldr,
@@ -355,8 +367,8 @@ class Assembler:
         )
 
         # Render templates
-        md_content = self._render_md(report, w, f, selected_figure)
-        html_content = self._render_html(report, w, f, md_content, selected_figure)
+        md_content = self._render_md(report, w, f, selected_figure, section_labels)
+        html_content = self._render_html(report, w, f, md_content, selected_figure, section_labels)
 
         # Save to disk
         self.storage.save_report(
@@ -446,9 +458,16 @@ class Assembler:
         writer_data: dict,
         finder_data: dict,
         selected_figure: Figure | None = None,
+        section_labels: dict[str, str] | None = None,
     ) -> dict:
+        from ppagent.agents.prompts import WRITER_SECTION_LABELS, DEFAULT_PAPER_TYPE
+
+        if section_labels is None:
+            section_labels = WRITER_SECTION_LABELS[DEFAULT_PAPER_TYPE]
         return {
             "paper": report.paper,
+            "paper_type": report.paper_type,
+            "section_labels": section_labels,
             "metadata": report.metadata,
             "benchmarks": report.benchmarks,
             "tldr": report.tldr,
@@ -473,6 +492,7 @@ class Assembler:
         writer_data: dict,
         finder_data: dict,
         selected_figure: Figure | None = None,
+        section_labels: dict[str, str] | None = None,
     ) -> str:
         """Render the Markdown report."""
         if self.env:
@@ -480,7 +500,7 @@ class Assembler:
                 template = self.env.get_template("report.md.jinja2")
                 return template.render(
                     **self._template_context(
-                        report, writer_data, finder_data, selected_figure
+                        report, writer_data, finder_data, selected_figure, section_labels
                     )
                 )
             except Exception as exc:
@@ -495,6 +515,7 @@ class Assembler:
         finder_data: dict,
         md_content: str,
         selected_figure: Figure | None = None,
+        section_labels: dict[str, str] | None = None,
     ) -> str:
         """Render the HTML report."""
         if self.env:
@@ -502,7 +523,7 @@ class Assembler:
                 template = self.env.get_template("report.html.jinja2")
                 return template.render(
                     **self._template_context(
-                        report, writer_data, finder_data, selected_figure
+                        report, writer_data, finder_data, selected_figure, section_labels
                     ),
                     markdown_content=md_content,
                 )

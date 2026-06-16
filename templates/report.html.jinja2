@@ -453,6 +453,11 @@
     color: #10b981;
     border-color: rgba(16, 185, 129, 0.15);
   }
+  .paper-type-tag {
+    background: rgba(147, 51, 234, 0.08);
+    color: #a855f7;
+    border-color: rgba(147, 51, 234, 0.15);
+  }
   .authors-list {
     color: var(--text-muted);
     line-height: 1.5;
@@ -905,7 +910,7 @@
     </a>
     <a href="#benchmarks" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
-      Benchmarks
+      {{ section_labels.benchmarks_heading | default('Benchmarks') }}
     </a>
     <a href="#previous-work" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/><line x1="12" x2="12" y1="7" y2="12"/><line x1="12" x2="16" y1="12" y2="14"/></svg>
@@ -919,11 +924,11 @@
     {% endif %}
     <a href="#method" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
-      Method
+      {{ section_labels.method_heading | default('Method') }}
     </a>
     <a href="#evaluation" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0Z"/></svg>
-      Evaluation
+      {{ section_labels.evaluation_heading | default('Performance Evaluation') }}
     </a>
     <a href="#critique" class="nav-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
@@ -1000,6 +1005,15 @@
         </div>
       </div>
       
+      {% if paper_type and paper_type != 'method' %}
+      <div class="info-item">
+        <div class="info-label">Paper Type</div>
+        <div class="info-value">
+          <span class="tag paper-type-tag">{{ paper_type | capitalize }}</span>
+        </div>
+      </div>
+      {% endif %}
+      
       {% if keywords %}
       <div class="info-item full-width">
         <div class="info-label">Keywords</div>
@@ -1036,7 +1050,7 @@
   <section id="benchmarks" class="content-card">
     <h2>
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
-      Benchmarks
+      {{ section_labels.benchmarks_heading | default('Benchmarks') }}
     </h2>
     <div class="markdown-body">
       {{ benchmarks.content | markdown }}
@@ -1068,7 +1082,7 @@
   <section id="method" class="content-card">
     <h2>
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
-      Method
+      {{ section_labels.method_heading | default('Method') }}
     </h2>
     {% if selected_figure %}
     <figure class="paper-figure">
@@ -1084,7 +1098,7 @@
   <section id="evaluation" class="content-card">
     <h2>
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0Z"/></svg>
-      Performance Evaluation
+      {{ section_labels.evaluation_heading | default('Performance Evaluation') }}
     </h2>
     <div class="markdown-body">
       {{ evaluation.content | markdown }}

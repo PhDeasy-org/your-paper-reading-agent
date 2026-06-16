@@ -38,6 +38,7 @@ class LLMConfig(BaseModel):
 # writer/finder/criticizer share the "text" role; figure_selector needs vision;
 # searcher is isolated so paper scoring can use a cheaper/faster model.
 AGENT_LLM_ROLE: dict[str, str] = {
+    "classifier": "text",
     "writer": "text",
     "finder": "text",
     "criticizer": "text",

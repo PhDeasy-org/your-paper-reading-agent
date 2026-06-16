@@ -17,9 +17,10 @@ from ppagent.agents.base import AgentWithTools, ToolDef
 from ppagent.agents.prompts import (
     WRITER_RESEARCH_SYSTEM_PROMPT,
     WRITER_RESEARCH_USER_PROMPT_TEMPLATE,
-    WRITER_SYSTEM_PROMPT,
+    WRITER_SYSTEM_PROMPTS,
     WRITER_USER_PROMPT_TEMPLATE,
     WRITER_WITH_RESEARCH_USER_PROMPT_TEMPLATE,
+    DEFAULT_PAPER_TYPE,
 )
 from ppagent.llm import LLMClient
 from ppagent import hf
@@ -199,7 +200,7 @@ class WriterAgent(AgentWithTools):
     # Main entry point                                                        #
     # --------------------------------------------------------------------- #
 
-    def run(self, *, content: PaperContent) -> AgentResult:
+    def run(self, *, content: PaperContent, paper_type: str = DEFAULT_PAPER_TYPE) -> AgentResult:
         self.llm.reset_usage()
 
         # Phase 1: research (optional)
@@ -245,7 +246,7 @@ class WriterAgent(AgentWithTools):
             )
 
         try:
-            system_prompt = WRITER_SYSTEM_PROMPT
+            system_prompt = WRITER_SYSTEM_PROMPTS.get(paper_type, WRITER_SYSTEM_PROMPTS[DEFAULT_PAPER_TYPE])
             lang = self.config.report.language
             if lang and lang.lower() != "english":
                 system_prompt += (
@@ -276,6 +277,7 @@ class WriterAgent(AgentWithTools):
                 "previous_works": output.previous_works_summary,
                 "method": output.method_details,
                 "evaluation": output.performance_evaluation,
+                "paper_type": paper_type,
             },
             usage=self.llm.get_usage(),
         )

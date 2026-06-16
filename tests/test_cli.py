@@ -205,6 +205,7 @@ def test_pipeline_arxiv_fallback_integration(mock_config):
          patch("ppagent.hf.paper_read", return_value="some markdown content"), \
          patch("ppagent.pdf.download_pdf"), \
          patch("ppagent.pdf.extract_text"), \
+         patch("ppagent.agents.classifier.ClassifierAgent.run") as mock_classifier, \
          patch("ppagent.agents.writer.WriterAgent.run") as mock_writer, \
          patch("ppagent.agents.finder.FinderAgent.run") as mock_finder, \
          patch("ppagent.agents.criticizer.CriticizerAgent.run") as mock_criticizer:
@@ -214,6 +215,7 @@ def test_pipeline_arxiv_fallback_integration(mock_config):
          mock_fetch_arxiv.return_value = mock_paper
          
          # Mock agents
+         mock_classifier.return_value = AgentResult(agent_name="classifier", success=True, data={"paper_type": "method", "confidence": 0.95})
          mock_writer.return_value = AgentResult(agent_name="writer", success=True, data={})
          mock_finder.return_value = AgentResult(agent_name="finder", success=True, data={})
          mock_criticizer.return_value = AgentResult(agent_name="criticizer", success=True, data={})

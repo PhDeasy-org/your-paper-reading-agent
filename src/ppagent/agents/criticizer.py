@@ -8,9 +8,10 @@ from typing import Any
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentBase
 from ppagent.agents.prompts import (
-    CRITICIZER_SYSTEM_PROMPT,
+    CRITICIZER_SYSTEM_PROMPTS,
     CRITICIZER_USER_PROMPT_TEMPLATE,
     CRITICIZER_WRITER_CONTEXT_TEMPLATE,
+    DEFAULT_PAPER_TYPE,
 )
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, CriticizerOutput, PaperContent
@@ -30,6 +31,7 @@ class CriticizerAgent(AgentBase):
         *,
         content: PaperContent,
         writer_sections: dict[str, Any] | None = None,
+        paper_type: str = DEFAULT_PAPER_TYPE,
     ) -> AgentResult:
         self.llm.reset_usage()
         # Include writer's analysis for additional context
@@ -49,7 +51,7 @@ class CriticizerAgent(AgentBase):
         )
 
         try:
-            system_prompt = CRITICIZER_SYSTEM_PROMPT
+            system_prompt = CRITICIZER_SYSTEM_PROMPTS.get(paper_type, CRITICIZER_SYSTEM_PROMPTS[DEFAULT_PAPER_TYPE])
             lang = self.config.report.language
             if lang and lang.lower() != "english":
                 system_prompt += f"\n\nIMPORTANT: Write ALL output text in {lang}. Keep paper titles and technical terms in their original language."

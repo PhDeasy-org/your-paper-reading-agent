@@ -79,6 +79,7 @@ class PaperReport(BaseModel):
     """Complete report for a single paper."""
 
     paper: Paper
+    paper_type: str = "method"
     metadata: ReportSection
     benchmarks: ReportSection
     tldr: ReportSection
@@ -104,6 +105,28 @@ class AgentResult(BaseModel):
 
 
 # --- Structured LLM output models ---
+
+
+class ClassifierOutput(BaseModel):
+    """Structured output from the Classifier agent."""
+
+    paper_type: str = Field(
+        default="method",
+        description=(
+            "The paper type. Must be one of: method, benchmark, survey, "
+            "analysis, empirical, framework, position, application."
+        ),
+    )
+    confidence: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the classification (0.0 to 1.0).",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Brief explanation of why this paper type was chosen.",
+    )
 
 
 class ScoredPaper(BaseModel):
