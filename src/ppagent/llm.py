@@ -105,6 +105,8 @@ class LLMClient:
         ("bigmodel.cn", "glm"),
         ("z.ai", "glm"),
         ("mistral.ai", "mistral"),
+        ("tencent.com", "tencent-hy"),
+        ("hunyuan", "tencent-hy"),
     )
 
     def _detect_provider(self) -> str | None:

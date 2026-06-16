@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 380" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#eff6ff"/><stop offset="1" stop-color="#dbeafe"/></linearGradient>
+  </defs>
+
+  <style>
+    .node { fill:#fff; stroke:#cbd5e1; stroke-width:1.2; rx:10; }
+    .lbl  { fill:#0f172a; font-size:13px; font-weight:600; }
+    .sub  { fill:#64748b; font-size:10.5px; }
+    .role { fill:#2563eb; font-size:10px; font-weight:700; letter-spacing:.5px; }
+    .arr  { stroke:#94a3b8; stroke-width:1.6; fill:none; }
+    .stage{ fill:#1e293b; font-size:11px; font-weight:700; }
+  </style>
+
+  <!-- phase 1: classify -->
+  <g>
+    <rect class="node" x="30" y="150" width="130" height="56"/>
+    <text class="role" x="95" y="172" text-anchor="middle">SEARCHER</text>
+    <text class="lbl" x="95" y="190" text-anchor="middle">rank by profile</text>
+  </g>
+
+  <!-- classify -->
+  <g>
+    <rect class="node" x="210" y="150" width="120" height="56" fill="url(#g1)"/>
+    <text class="role" x="270" y="172" text-anchor="middle">CLASSIFIER</text>
+    <text class="lbl" x="270" y="190" text-anchor="middle">paper type</text>
+  </g>
+
+  <!-- writer + finder (parallel) -->
+  <g>
+    <rect x="380" y="110" width="160" height="136" fill="none" stroke="#93c5fd" stroke-dasharray="4 3" rx="12"/>
+    <text x="460" y="100" text-anchor="middle" class="stage" fill="#1d4ed8">PARALLEL</text>
+    <rect class="node" x="392" y="122" width="136" height="50"/>
+    <text class="role" x="460" y="142" text-anchor="middle">WRITER</text>
+    <text class="sub" x="460" y="158" text-anchor="middle">TL;DR · method · eval</text>
+    <rect class="node" x="392" y="184" width="136" height="50"/>
+    <text class="role" x="460" y="204" text-anchor="middle">FINDER</text>
+    <text class="sub" x="460" y="220" text-anchor="middle">related works</text>
+  </g>
+
+  <!-- criticizer -->
+  <g>
+    <rect class="node" x="600" y="80" width="140" height="56"/>
+    <text class="role" x="670" y="102" text-anchor="middle">CRITICIZER</text>
+    <text class="lbl" x="670" y="120" text-anchor="middle">audit &amp; severity</text>
+  </g>
+
+  <!-- figure selector -->
+  <g>
+    <rect class="node" x="600" y="190" width="140" height="56" fill="#faf5ff" stroke="#c4b5fd"/>
+    <text class="role" x="670" y="212" text-anchor="middle" fill="#7c3aed">VISION</text>
+    <text class="lbl" x="670" y="230" text-anchor="middle">figure selector</text>
+  </g>
+
+  <!-- assembler -->
+  <g>
+    <rect class="node" x="800" y="135" width="150" height="76" fill="#f0fdf4" stroke="#86efac"/>
+    <text class="role" x="875" y="158" text-anchor="middle" fill="#059669">ASSEMBLER</text>
+    <text class="lbl" x="875" y="176" text-anchor="middle">Jinja2 render</text>
+    <text class="sub" x="875" y="193" text-anchor="middle">md + html</text>
+  </g>
+
+  <!-- arrows -->
+  <path class="arr" d="M160,178 L208,178" marker-end="url(#arr)"/>
+  <path class="arr" d="M330,178 L378,178" marker-end="url(#arr)"/>
+  <path class="arr" d="M540,147 L598,108" marker-end="url(#arr)"/>
+  <path class="arr" d="M540,209 L598,218" marker-end="url(#arr)"/>
+  <path class="arr" d="M740,108 L798,160" marker-end="url(#arr)"/>
+  <path class="arr" d="M740,218 L798,190" marker-end="url(#arr)"/>
+
+  <!-- input/output labels -->
+  <text x="95" y="250" text-anchor="middle" class="sub">HF Daily Papers</text>
+  <text x="875" y="240" text-anchor="middle" class="sub" fill="#059669">report.md · report.html</text>
+</svg>

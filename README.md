@@ -1,365 +1,173 @@
+<div align="center">
+
 # ppagent
 
-Personalized arXiv paper discovery and automated report generation using AI agents.
+**Turn any arXiv paper into a structured, illustrated reading report — in one command.**
 
-`ppagent` fetches trending papers from [HuggingFace Daily Papers](https://huggingface.co/papers), ranks them against your research profile, and generates structured reading reports (Markdown + HTML) via a multi-agent pipeline.
+A multi-agent pipeline: a **Writer** drafts the analysis, a **Finder** pulls related
+work, a **Criticizer** audits claims, and a **Vision** agent picks the best figure
+from the PDF. Everything is assembled into a clean Markdown + HTML report.
 
----
+[Installation](#installation) · [Usage](#generate-a-report) · [Showcase](#showcase) · [How it works](#how-it-works)
 
-## Features
+</div>
 
-- **Personalized paper search** — ranks papers by relevance to your research profile
-- **Multi-agent report generation** — Writer, Finder, and Criticizer agents produce:
-  - Metadata, keywords, affiliations, benchmarks
-  - TL;DR, method details, performance evaluation
-  - Related works discovery
-  - Critical analysis and limitations
-- **Dual output formats** — Markdown and styled HTML reports
-- **Auto-fetch scheduler** — run the pipeline on a cron schedule
-- **Optional publishing** — push reports to WeChat, Notion, or a personal blog
-- **Extensible agents** — drop in custom agents via Python plugins
-- **TOML-based configuration** — all settings in one file, env var overrides for secrets
+<br>
+
+<p align="center"><em>A report generated for <a href="https://arxiv.org/abs/2606.01075">arXiv:2606.01075</a> — TL;DR, metadata, and the vision-selected figure, all auto-produced.</em></p>
+
+<p align="center">
+  <img src="assets/report_hero.png" alt="ppagent report — title, TL;DR, metadata, and selected figure" width="720">
+</p>
 
 ---
 
 ## Installation
 
-### One-liner (macOS)
+**macOS (one-liner):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/PhDeasy-org/your-paper-reading-agent/main/install.sh | bash
 ```
 
-This automatically installs Python 3.12+, uv, HuggingFace CLI, and sets up ppagent with a default config.
-
-### Manual
-
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+**Manual** (requires [Python 3.12+](https://www.python.org/) and [uv](https://docs.astral.sh/uv/)):
 
 ```bash
 git clone https://github.com/PhDeasy-org/your-paper-reading-agent.git
-cd daily-paper-reading
+cd your-paper-reading-agent
 uv sync
+uv tool install "huggingface_hub[cli]"   # paper metadata source
 ```
 
-Also requires the [HuggingFace CLI](https://huggingface.co/docs/huggingface_hub/en/guides/cli):
+Then **configure your LLM**:
 
 ```bash
-uv tool install "huggingface_hub[cli]"
+ppagent config
 ```
+
+This opens an interactive menu — pick a provider (OpenAI, DeepSeek, Gemini,
+Anthropic, Qwen, GLM, …), paste your API key, and save. That's the only setup step.
+
+<p align="center"><img src="assets/pipeline.svg" alt="ppagent multi-agent pipeline" width="720"></p>
 
 ---
 
-## Quick Start
+## Generate a report
 
 ```bash
-# 1. Create default config
-uv run ppagent config init
-
-# 2. Add your LLM API key
-#    Edit config/settings.toml → set llm.api_key
-#    Or: export PPA_LLM_API_KEY=sk-...
-
-# 3. Customize your research profile
-#    Edit config/profile.md
-
-# 4. Discover papers
-uv run ppagent search
-
-# 5. Generate a report for a specific paper
-uv run ppagent report 2506.12345
-
-# 6. Full pipeline: search + report all matches
-uv run ppagent run
+ppagent report arxiv:2606.01075
 ```
+
+That's it. The command fetches the paper, runs all agents in parallel, and opens
+the finished report in your browser.
+
+<p align="center">
+  <img src="assets/cli_run.png" alt="ppagent report arxiv:2606.01075 terminal output" width="560">
+</p>
+
+> The paper ID accepts any form — `2606.01075`, `arxiv:2606.01075`,
+> `https://arxiv.org/abs/2606.01075`, or a `huggingface.co/papers/...` URL.
+
+<details>
+<summary><strong>All commands</strong></summary>
+
+| Command | What it does |
+|---------|--------------|
+| `ppagent report arxiv:xxxx.xxxxx` | Generate a full report for one or more papers |
+| `ppagent run` | Search today's trending papers by your profile, then report each match |
+| `ppagent search` | Just discover & rank papers (no report) |
+| `ppagent config` | Interactive settings menu (LLM, profile, output, scheduler) |
+| `ppagent config show` | Print the active configuration |
+
+Common flags: `report --force` (regenerate without prompting),
+`run --schedule` (auto-run on a cron), `--verbose`.
+
+</details>
 
 ---
 
-## Shell Completion
+## Showcase
 
-ppagent supports tab completion for commands, options, and arguments.
+Every report is a single self-contained HTML file (plus Markdown) with rendered
+equations, linked citations, and the agent-selected figure.
 
-### Install (automatic)
+<p align="center"><em>Method section — LaTeX equations render inline via MathJax; citations auto-link to arXiv.</em></p>
+<p align="center"><img src="assets/report_method.png" width="640"></p>
+
+<p align="center"><em>Critical Analysis — every limitation is tagged by severity (<b style="color:#dc2626">HIGH</b> / <b style="color:#d97706">MEDIUM</b> / <b style="color:#6b7280">LOW</b>).</em></p>
+<p align="center"><img src="assets/report_critical.png" width="640"></p>
+
+<p align="center"><em>Figures are extracted from the source PDF, then a vision agent selects the most informative one.</em></p>
+<p align="center"><img src="assets/example_figure.png" width="540"></p>
+
+<details>
+<summary><strong>What each report contains</strong></summary>
+
+- **TL;DR** — one-paragraph distillation
+- **Metadata** — authors, affiliations, keywords, benchmarks
+- **Previous work & limitations** — contextualized, with linked arXiv citations
+- **Method** — technical breakdown with rendered equations
+- **Performance evaluation** — benchmark numbers and ablations
+- **Critical analysis** — independent audit, severity-tagged
+- **Related papers** — discovered by the Finder agent
+- **Selected figure** — chosen by the vision agent from the PDF
+
+</details>
+
+<details>
+<summary><strong>Discover papers automatically</strong></summary>
+
+Edit `config/profile.md` with your research interests, then let ppagent find
+relevant papers each day:
 
 ```bash
-ppagent --install-completion
+ppagent run                 # search + report today's matches
+ppagent run --schedule      # ...on a daily cron
 ```
 
-This detects your shell (zsh, bash, or fish) and installs the completion script automatically. Reload your shell afterwards:
+Reports are written to `output/<date>/<paper-id>/report.{md,html}`.
 
-```bash
-source ~/.zshrc   # or ~/.bashrc, etc.
-```
+</details>
 
-### Install (manual)
+<details>
+<summary><strong>Advanced</strong></summary>
 
-```bash
-# Show the completion script (to inspect or copy)
-ppagent --show-completion
-```
+- **Output language** — set `report.language` in the config menu (`中文`, `日本語`, `Français`, …).
+- **Publishing** — push to Notion, a WeChat Official Account, or a blog webhook.
+- **Custom agents & publishers** — drop a Python file in `~/.config/ppagent/agents/` or `…/publishers/`.
+- **Per-role LLMs** — the Writer, Vision, and Searcher agents can each use a different model.
+- **Environment overrides** — `PPA_LLM_API_KEY`, `PPA_LLM_BASE_URL`, `PPA_LLM_MODEL`.
 
-The install script (`bash install.sh`) sets up completions automatically.
+</details>
 
 ---
 
-## CLI Reference
+## How it works
 
 ```
-ppagent [OPTIONS] COMMAND [ARGS]...
-```
-
-| Command | Description |
-|---------|-------------|
-| `search` | Discover and rank papers by relevance to your profile |
-| `report <paper_id>` | Generate a detailed report for a specific paper |
-| `run` | Full pipeline: search + report generation |
-| `config show` | Show current configuration |
-| `config init` | Create a default `config/settings.toml` |
-
-### Options
-
-| Option | Description |
-|--------|-------------|
-| `--version`, `-V` | Show version |
-| `--verbose`, `-v` | Enable debug logging |
-
-### `ppagent search`
-
-```bash
-ppagent search [--date YYYY-MM-DD] [--limit N] [--profile path/to/profile.md]
-```
-
-### `ppagent report`
-
-```bash
-ppagent report <paper_id_or_url> [--output path/to/dir]
-```
-
-Accepts an arXiv ID (`2506.12345`) or full URL (`https://arxiv.org/abs/2506.12345`).
-
-### `ppagent run`
-
-```bash
-ppagent run [--date YYYY-MM-DD] [--limit N] [--schedule]
-```
-
-`--schedule` starts auto-fetch mode, running the pipeline at the configured cron time.
-
----
-
-## Configuration
-
-All settings live in `config/settings.toml`. Copy `config/settings.example.toml` as a starting point.
-
-```toml
-[llm]
-base_url = "https://api.openai.com/v1"   # any OpenAI-compatible endpoint
-api_key = "sk-..."                         # or set PPA_LLM_API_KEY
-model = "gpt-4o"
-
-[search]
-default_limit = 50
-sort = "trending"
-profile_path = "config/profile.md"
-relevance_threshold = 0.6
-max_reports_per_run = 5
-
-[report]
-output_dir = "output"
-formats = ["md", "html"]
-download_pdf = true
-language = "English"  # e.g. "Chinese", "Japanese", "French"
-
-[scheduler]
-enabled = false
-cron_hour = 8
-cron_minute = 0
-timezone = "Asia/Shanghai"
-
-[publish.wechat]
-enabled = false
-appid = ""
-secret = ""
-
-[publish.notion]
-enabled = false
-api_key = ""
-database_id = ""
-
-[publish.blog]
-enabled = false
-webhook_url = ""
-```
-
-**Environment variable overrides** (take precedence over TOML):
-
-| Variable | Overrides |
-|----------|-----------|
-| `PPA_LLM_API_KEY` | `llm.api_key` |
-| `PPA_LLM_BASE_URL` | `llm.base_url` |
-| `PPA_LLM_MODEL` | `llm.model` |
-| `PPA_NOTION_API_KEY` | `publish.notion.api_key` |
-| `PPA_WECHAT_APPID` | `publish.wechat.appid` |
-| `PPA_WECHAT_SECRET` | `publish.wechat.secret` |
-| `PPA_BLOG_API_KEY` | `publish.blog.api_key` |
-
----
-
-## Research Profile
-
-Edit `config/profile.md` to define your interests. The Searcher agent uses this to score papers.
-
-```markdown
-# Research Profile
-
-## Research Areas
-- Large Language Models
-- Multimodal AI
-- AI Agents and Tool Use
-
-## Keywords
-transformer, fine-tuning, RLHF, vision-language, reasoning
-
-## Disinterests (exclude papers about)
-- Pure theoretical mathematics
-- Hardware-only contributions
-
-## Preferred Venues
-NeurIPS, ICML, ICLR, ACL, EMNLP, CVPR
-```
-
----
-
-## Output Structure
-
-Reports are saved to `output/{date}/{paper_id}/`:
-
-```
-output/
-└── 2026-06-10/
-    └── 2506.12345/
-        ├── report.md        # Markdown report
-        ├── report.html      # Styled HTML report
-        └── metadata.json    # Structured metadata
-```
-
----
-
-## Architecture
-
-```
-User Profile (.md)
-       │
-       ▼
-┌──────────────┐    hf papers ls
-│  Searcher    │◄──────────────── HuggingFace CLI
-│  Agent       │
-└──────┬───────┘
-       │ filtered papers
-       ▼
-┌──────────────────────────────┐
-│  Paper Pipeline (per paper)  │
-│                              │
-│  ┌─────────┐  ┌──────────┐  │
-│  │ Writer  │  │ Finder   │  │  ◄── parallel
-│  └────┬────┘  └─────┬────┘  │
-│       │              │       │
-│       ▼              ▼       │
-│  ┌──────────────┐            │
-│  │ Criticizer   │            │  ◄── needs Writer output
-│  └──────┬───────┘            │
-│         │                    │
-│         ▼                    │
-│  ┌──────────────┐            │
-│  │ Assembler    │            │  ◄── deterministic, no LLM
-│  └──────┬───────┘            │
-└─────────┼────────────────────┘
-          │
-          ▼
-  report.md + report.html
-```
-
-**Agents**:
-- **Searcher** — scores papers against your profile using structured LLM output
-- **Writer** — extracts metadata, benchmarks, TL;DR, method, evaluation
-- **Finder** — searches related works via tool-calling (`hf papers search`)
-- **Criticizer** — audits the paper for limitations and weaknesses
-- **Assembler** — renders all sections into Markdown + HTML via Jinja2 templates
-
----
-
-## Custom Agents
-
-Place a Python file in `~/.config/ppagent/agents/`:
-
-```python
-# ~/.config/ppagent/agents/my_summarizer.py
-from ppagent.agents.base import AgentBase, register_agent
-from ppagent.models import AgentResult
-
-@register_agent
-class MySummarizer(AgentBase):
-    name = "my_summarizer"
-    description = "Produces bullet-point summaries"
-
-    def run(self, **kwargs) -> AgentResult:
-        content = kwargs.get("content")
-        # your logic here
-        return AgentResult(agent_name=self.name, success=True, data={"summary": "..."})
-```
-
-Reference it in `settings.toml`:
-
-```toml
-[report]
-custom_agents = ["my_summarizer"]
-```
-
-## Custom Publishers
-
-Same pattern — drop a file in `~/.config/ppagent/publishers/`:
-
-```python
-from ppagent.publishers.base import PublisherBase, register_publisher
-from ppagent.models import PaperReport
-
-@register_publisher
-class MyPublisher(PublisherBase):
-    name = "my_publisher"
-
-    def publish(self, report: PaperReport, *, md_content: str, html_content: str) -> bool:
-        # push to your platform
-        return True
-```
-
----
-
-## Project Structure
-
-```
-daily-paper-reading/
-├── main.py                          # Entry point
-├── pyproject.toml                   # Dependencies + build config
-├── config/
-│   ├── settings.toml                # Your config (gitignored)
-│   ├── settings.example.toml        # Template
-│   └── profile.md                   # Your research profile
-├── templates/
-│   ├── report.md.jinja2             # Markdown report template
-│   └── report.html.jinja2           # HTML report template
-├── src/ppagent/
-│   ├── cli.py                       # Typer CLI
-│   ├── config.py                    # Config loading
-│   ├── models.py                    # Pydantic data models
-│   ├── llm.py                       # OpenAI-compatible LLM client
-│   ├── hf.py                        # HuggingFace CLI wrapper
-│   ├── pdf.py                       # PDF download + extraction
-│   ├── pipeline.py                  # Multi-agent orchestration
-│   ├── scheduler.py                 # Auto-fetch mode
-│   ├── storage.py                   # Report file management
-│   ├── agents/                      # Searcher, Writer, Finder, Criticizer, Assembler
-│   └── publishers/                  # WeChat, Notion, Blog
-└── output/                          # Generated reports (gitignored)
+HF/arXiv paper
+      │
+      ▼
+┌──────────┐   ┌────────────┐
+│ Searcher │──▶│ Classifier │──▶ paper type
+└──────────┘   └────────────┘            │
+                                         ▼
+            ┌────────────────────────────────────────┐
+            │  Writer  ─┐                            │
+            │           ├── run in parallel          │
+            │  Finder  ─┘                            │
+            └──────────────────┬─────────────────────┘
+                               ▼
+                    ┌─────────────┐   ┌───────────────┐
+                    │ Criticizer  │   │ Vision: pick  │
+                    │ (audit)     │   │ best figure   │
+                    └──────┬──────┘   └───────┬───────┘
+                           └────────┬─────────┘
+                                    ▼
+                          ┌──────────────────┐
+                          │    Assembler     │──▶ report.md + report.html
+                          │  (Jinja2 render) │
+                          └──────────────────┘
 ```
 
 ---

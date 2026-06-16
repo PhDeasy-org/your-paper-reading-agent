@@ -43,6 +43,28 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _normalize_paper_id(paper_id: str) -> str:
+    """Normalize a user-supplied paper id to a bare arXiv id.
+
+    Accepts any of:
+      - ``2506.12345`` / ``2506.12345v2``           → ``2506.12345``
+      - ``arxiv:2506.12345`` / ``ARXIV:2506.12345`` → ``2506.12345``
+      - ``https://arxiv.org/abs/2506.12345``        → ``2506.12345``
+      - ``https://arxiv.org/pdf/2506.12345v2``      → ``2506.12345``
+      - ``https://huggingface.co/papers/2506.12345``→ ``2506.12345``
+    """
+    import re
+
+    pid = paper_id.strip()
+    # Strip URL path prefixes first.
+    pid = pid.rstrip("/").split("/")[-1]
+    # Drop an explicit "arxiv:" scheme, version suffix, or a leading "abs/"/"pdf/".
+    pid = re.sub(r"^(?i:arxiv:)", "", pid)
+    pid = re.sub(r"^(?i:abs|pdf)/", "", pid)
+    pid = re.sub(r"v\d+$", "", pid)
+    return pid
+
+
 @app.callback()
 def main_callback(
     version: bool = typer.Option(
@@ -148,9 +170,8 @@ def report(
     has_errors = False
 
     for paper_id in paper_ids:
-        # Extract ID from URL if needed
-        if "/" in paper_id:
-            paper_id = paper_id.rstrip("/").split("/")[-1]
+        # Normalize arxiv: / URL / version suffixes to a bare arXiv id.
+        paper_id = _normalize_paper_id(paper_id)
 
         console.print(f"\n[bold]Generating report for paper:[/bold] {paper_id}")
 

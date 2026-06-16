@@ -40,16 +40,74 @@ class MenuItem:
         self.description = description
 
 
-def _llm_submenu_items(role: str) -> list[MenuItem]:
-    """Build the 7-field LLM submenu for a given role (text/vision/searcher).
+VENDORS = [
+    {"key": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1"},
+    {"key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com"},
+    {"key": "mistral", "name": "Mistral", "base_url": "https://api.mistral.ai/v1"},
+    {"key": "gemini", "name": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
+    {"key": "anthropic", "name": "Anthropic", "base_url": "https://api.anthropic.com/v1"},
+    {"key": "qwen", "name": "Qwen (Alibaba)", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+    {"key": "kimi", "name": "Kimi (Moonshot)", "base_url": "https://api.moonshot.ai/v1"},
+    {"key": "glm", "name": "GLM (Zhipu)", "base_url": "https://open.bigmodel.cn/api/paas/v4"},
+    {"key": "grok", "name": "Grok (xAI)", "base_url": "https://api.x.ai/v1"},
+    {"key": "stepfun", "name": "StepFun", "base_url": "https://api.stepfun.ai/v1"},
+    {"key": "minimax", "name": "MiniMax", "base_url": "https://api.minimax.io/v1"},
+    {"key": "mimo", "name": "MiMo (Xiaomi)", "base_url": "https://api.xiaomimimo.com/v1"},
+    {"key": "doubao", "name": "Doubao (ByteDance)", "base_url": "https://ark.cn-beijing.volces.com/api/v3"},
+    {"key": "tencent", "name": "Tencent Hunyuan", "base_url": "https://api.hunyuan.cloud.tencent.com"},
+    {"key": "custom", "name": "Custom OpenAI Compatible", "base_url": None},
+]
 
-    Keys are dotted as ``llms.<role>.<field>`` so the existing
-    get/set_config_value helpers resolve them against ``AppConfig.llms``.
+
+def detect_vendor(base_url: str | None) -> str:
+    if not base_url:
+        return "custom"
+    base = base_url.lower()
+    if "openai.com" in base:
+        return "openai"
+    if "deepseek.com" in base or "deepseek" in base:
+        return "deepseek"
+    if "mistral.ai" in base:
+        return "mistral"
+    if "googleapis.com" in base or "google" in base:
+        return "gemini"
+    if "anthropic.com" in base:
+        return "anthropic"
+    if "dashscope" in base or "aliyuncs.com" in base:
+        return "qwen"
+    if "moonshot.cn" in base or "kimi.ai" in base or "moonshot.ai" in base:
+        return "kimi"
+    if "bigmodel.cn" in base or "z.ai" in base:
+        return "glm"
+    if "x.ai" in base:
+        return "grok"
+    if "stepfun" in base:
+        return "stepfun"
+    if "minimax" in base:
+        return "minimax"
+    if "xiaomimimo.com" in base or "mimo" in base:
+        return "mimo"
+    if "volces.com" in base or "volcengine.com" in base:
+        return "doubao"
+    if "hunyuan" in base or "tencent" in base:
+        return "tencent"
+    return "custom"
+
+
+def _llm_submenu_items(role: str, vendor_key: str) -> list[MenuItem]:
+    """Build the LLM submenu for a given role and vendor.
+
+    If vendor_key is 'custom', 'API Base URL' is displayed and editable.
+    Otherwise, it is hidden from the settings page, and is set automatically.
     """
     prefix = f"llms.{role}"
-    return [
-        MenuItem("<- Back to LLM Roles", target="back"),
-        MenuItem("API Base URL", key=f"{prefix}.base_url", val_type=str, description="Endpoint URL for the LLM API provider."),
+    items = [
+        MenuItem("<- Back to Providers", target="back"),
+    ]
+    if vendor_key == "custom":
+        items.append(MenuItem("API Base URL", key=f"{prefix}.base_url", val_type=str, description="Endpoint URL for the LLM API provider."))
+
+    items.extend([
         MenuItem("API Key", key=f"{prefix}.api_key", val_type=str, secret=True, description="Authentication key for the LLM API."),
         MenuItem("Model Name", key=f"{prefix}.model", val_type=str, description="Target model (e.g. gpt-4o, deepseek-chat)."),
         MenuItem("Temperature", key=f"{prefix}.temperature", val_type=float, description="LLM sampling temperature (higher is more creative)."),
@@ -57,7 +115,8 @@ def _llm_submenu_items(role: str) -> list[MenuItem]:
         MenuItem("Timeout", key=f"{prefix}.timeout", val_type=int, description="HTTP request timeout in seconds."),
         MenuItem("Instructor Mode", key=f"{prefix}.instructor_mode", val_type=str, description="Structured output mode: auto, json, tool_call, etc."),
         MenuItem("Enable Thinking", key=f"{prefix}.enable_thinking", val_type=bool, description="Enable extended reasoning (uses model's default thinking budget)."),
-    ]
+    ])
+    return items
 
 
 MENUS: dict[str, list[MenuItem]] = {
@@ -70,13 +129,10 @@ MENUS: dict[str, list[MenuItem]] = {
     ],
     "llms": [
         MenuItem("<- Back to Main Menu", target="back"),
-        MenuItem("Text LLM (writer/finder/criticizer)", target="llm_text", description="LLM used by the writer, finder, and criticizer agents for paper analysis."),
-        MenuItem("Vision LLM (figure selector)", target="llm_vision", description="Vision-capable LLM used by the figure_selector agent to pick pipeline diagrams."),
-        MenuItem("Searcher LLM (paper scoring)", target="llm_searcher", description="LLM used by the searcher agent to score paper relevance to your profile."),
+        MenuItem("Text LLM (writer/finder/criticizer)", target="llm_text_vendor", description="LLM used by the writer, finder, and criticizer agents for paper analysis."),
+        MenuItem("Vision LLM (figure selector)", target="llm_vision_vendor", description="Vision-capable LLM used by the figure_selector agent to pick pipeline diagrams."),
+        MenuItem("Searcher LLM (paper scoring)", target="llm_searcher_vendor", description="LLM used by the searcher agent to score paper relevance to your profile."),
     ],
-    "llm_text": _llm_submenu_items("text"),
-    "llm_vision": _llm_submenu_items("vision"),
-    "llm_searcher": _llm_submenu_items("searcher"),
     "search": [
         MenuItem("<- Back to Main Menu", target="back"),
         MenuItem("Default Date", key="search.default_date", val_type=str, description="Default papers date (YYYY-MM-DD or 'today')."),
@@ -127,6 +183,52 @@ MENUS: dict[str, list[MenuItem]] = {
         MenuItem("API Key", key="publish.blog.api_key", val_type=str, secret=True, description="Authorization API token for the blog endpoint."),
     ],
 }
+
+
+def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
+    if menu_id in MENUS:
+        return MENUS[menu_id]
+
+    # Check if vendor list menu
+    # e.g., "llm_text_vendor", "llm_vision_vendor", "llm_searcher_vendor"
+    vendor_list_match = re.match(r"^llm_(text|vision|searcher)_vendor$", menu_id)
+    if vendor_list_match:
+        role = vendor_list_match.group(1)
+        role_label = {
+            "text": "Text LLM",
+            "vision": "Vision LLM",
+            "searcher": "Searcher LLM"
+        }[role]
+
+        current_base_url = get_config_value(cfg, f"llms.{role}.base_url")
+        active_vendor = detect_vendor(current_base_url)
+
+        items = [
+            MenuItem(f"<- Back to LLM Roles", target="back"),
+        ]
+        for v in VENDORS:
+            is_active = (v["key"] == active_vendor)
+            label = v["name"]
+            if is_active:
+                label = f"{label} [bold green](Active)[/bold green]"
+            items.append(
+                MenuItem(
+                    label=label,
+                    target=f"llm_{role}_{v['key']}",
+                    description=f"Configure {v['name']} settings for {role_label}."
+                )
+            )
+        return items
+
+    # Check if specific vendor setting menu
+    # e.g., "llm_text_openai"
+    vendor_setting_match = re.match(r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", menu_id)
+    if vendor_setting_match:
+        role, vendor_key = vendor_setting_match.groups()
+        return _llm_submenu_items(role, vendor_key)
+
+    raise KeyError(f"Menu '{menu_id}' not found.")
+
 
 
 def get_config_path() -> Path:
@@ -192,7 +294,7 @@ def format_menu_item(item: MenuItem, current_val: Any, is_selected: bool) -> str
 
 def make_ui(menu_id: str, selected_idx: int, cfg: AppConfig) -> Panel:
     """Build the UI component hierarchy for Rich."""
-    menu_def = MENUS[menu_id]
+    menu_def = get_menu_definition(menu_id, cfg)
     
     title = Text.assemble(
         ("⚙  ", "bold purple"),
@@ -335,7 +437,7 @@ def run_config_tui() -> None:
     with Live(make_ui("main", 0, cfg), console=console, screen=True, auto_refresh=False) as live:
         while True:
             menu_id, selected_idx = menu_stack[-1]
-            menu_def = MENUS[menu_id]
+            menu_def = get_menu_definition(menu_id, cfg)
             
             live.update(make_ui(menu_id, selected_idx, cfg), refresh=True)
             
@@ -369,6 +471,15 @@ def run_config_tui() -> None:
                         if len(menu_stack) > 1:
                             menu_stack.pop()
                     else:
+                        # Set default base URL if selecting a specific vendor
+                        match = re.match(r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", item.target)
+                        if match:
+                            role, vendor_key = match.groups()
+                            if vendor_key != "custom":
+                                for v in VENDORS:
+                                    if v["key"] == vendor_key:
+                                        set_config_value(cfg, f"llms.{role}.base_url", v["base_url"])
+                                        break
                         menu_stack.append((item.target, 0))
                 elif item.key:
                     if item.val_type is bool:
