@@ -67,8 +67,6 @@ MENUS: dict[str, list[MenuItem]] = {
         MenuItem("Report Settings", target="report", description="Configure report directories, formats, and output language."),
         MenuItem("Scheduler Settings", target="scheduler", description="Configure cron-like background paper discovery times."),
         MenuItem("Publishing Settings", target="publish", description="Configure destinations to share discovered papers (Notion, WeChat, Blog)."),
-        MenuItem("[bold green]Save & Exit[/bold green]", target="save", description="Save all changes to settings.toml and exit."),
-        MenuItem("[bold red]Discard & Exit[/bold red]", target="discard", description="Discard all changes and exit."),
     ],
     "llms": [
         MenuItem("<- Back to Main Menu", target="back"),
@@ -216,7 +214,7 @@ def make_ui(menu_id: str, selected_idx: int, cfg: AppConfig) -> Panel:
     content = Group(
         Panel(body_content, border_style="cyan", title="Navigation Menu"),
         Panel(
-            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: [↑/↓] Navigate  [Enter] Select/Toggle  [Esc] Back/Discard[/dim]",
+            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: [↑/↓] Navigate  [Enter] Select/Toggle  [←] Back  [q] Save & Quit  [x] Discard & Quit[/dim]",
             border_style="dim blue",
             title="Help & Controls"
         )
@@ -352,25 +350,24 @@ def run_config_tui() -> None:
             elif key == 'down' or key == 'j':
                 selected_idx = (selected_idx + 1) % len(menu_def)
                 menu_stack[-1] = (menu_id, selected_idx)
-            elif key == 'esc':
+            elif key == 'left' or key == 'esc':
                 if len(menu_stack) > 1:
                     menu_stack.pop()
-                else:
-                    break
+            elif key == 'q':
+                save_config(cfg, config_file)
+                live.stop()
+                console.print(f"[bold green]Configuration saved successfully to {config_file.relative_to(PROJECT_ROOT)}[/bold green]")
+                return
+            elif key == 'x':
+                live.stop()
+                console.print("[yellow]Changes discarded.[/yellow]")
+                return
             elif key == 'enter':
                 item = menu_def[selected_idx]
                 if item.target:
                     if item.target == 'back':
-                        menu_stack.pop()
-                    elif item.target == 'save':
-                        save_config(cfg, config_file)
-                        live.stop()
-                        console.print(f"[bold green]Configuration saved successfully to {config_file.relative_to(PROJECT_ROOT)}[/bold green]")
-                        return
-                    elif item.target == 'discard':
-                        live.stop()
-                        console.print("[yellow]Changes discarded.[/yellow]")
-                        return
+                        if len(menu_stack) > 1:
+                            menu_stack.pop()
                     else:
                         menu_stack.append((item.target, 0))
                 elif item.key:

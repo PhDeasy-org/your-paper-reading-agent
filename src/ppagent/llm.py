@@ -61,12 +61,18 @@ class LLMClient:
         local_usage["completion_tokens"] += completion
         local_usage["total_tokens"] += total
 
+    _REASONING_MODEL_HINTS = (
+        "deepseek", "reasoner", "r1", "qwq", "qwq-plus",
+        "magistral", "grok-4", "step-3", "mimo-v2",
+        "glm-5", "glm-4.7", "doubao-seed",
+    )
+
     def _resolve_instructor_mode(self) -> Any:
         mode_str = self.config.instructor_mode.lower()
         if mode_str == "auto":
             model_lower = self.config.model.lower()
-            if "deepseek" in model_lower or "reasoner" in model_lower or "r1" in model_lower:
-                logger.info("Auto-detected DeepSeek/reasoner model '%s': using MD_JSON mode", self.config.model)
+            if any(hint in model_lower for hint in self._REASONING_MODEL_HINTS):
+                logger.info("Auto-detected reasoning model '%s': using MD_JSON mode", self.config.model)
                 return instructor.Mode.MD_JSON
             return instructor.Mode.TOOLS
 
@@ -86,11 +92,19 @@ class LLMClient:
         ("deepseek.com", "deepseek"),
         ("anthropic.com", "anthropic"),
         ("dashscope", "qwen"),
+        ("aliyuncs.com", "qwen"),
         ("moonshot.cn", "kimi"),
+        ("kimi.ai", "kimi"),
         ("googleapis.com", "gemini"),
+        ("x.ai", "grok"),
+        ("stepfun", "stepfun"),
         ("minimax", "minimax"),
-        ("volces.com", "volcengine"),
-        ("bigmodel.cn", "zhipu"),
+        ("xiaomimimo.com", "mimo"),
+        ("volces.com", "doubao"),
+        ("volcengine.com", "doubao"),
+        ("bigmodel.cn", "glm"),
+        ("z.ai", "glm"),
+        ("mistral.ai", "mistral"),
     )
 
     def _detect_provider(self) -> str | None:
@@ -110,23 +124,31 @@ class LLMClient:
             return {}
         provider = self._detect_provider()
         if provider == "openai":
-            return {"reasoning_effort": "medium"}
+            return {"extra_body": {"reasoning_effort": "medium"}}
         if provider == "deepseek":
-            return {"reasoning_effort": "high", "extra_body": {"thinking": {"type": "enabled"}}}
+            return {"extra_body": {"thinking": {"type": "enabled"}}}
         if provider == "anthropic":
-            return {"extra_body": {"thinking": {"type": "adaptive"}}}
+            return {"extra_body": {"thinking": {"type": "enabled"}}}
         if provider == "qwen":
             return {"extra_body": {"enable_thinking": True}}
         if provider == "kimi":
             return {"extra_body": {"thinking": {"type": "enabled"}}}
         if provider == "gemini":
-            return {"reasoning_effort": "medium"}
+            return {"extra_body": {"reasoning_effort": "medium"}}
+        if provider == "grok":
+            return {"extra_body": {"reasoning_effort": "medium"}}
+        if provider == "stepfun":
+            return {"extra_body": {"reasoning_effort": "medium"}}
         if provider == "minimax":
-            return {"extra_body": {"thinking": {"type": "adaptive"}}}
-        if provider == "volcengine":
-            return {"extra_body": {"thinking": {"type": "enabled", "budget_tokens": 32000}}}
-        if provider == "zhipu":
             return {"extra_body": {"thinking": {"type": "enabled"}}}
+        if provider == "mimo":
+            return {"extra_body": {"thinking": {"type": "enabled"}}}
+        if provider == "doubao":
+            return {"extra_body": {"thinking": {"type": "enabled"}}}
+        if provider == "glm":
+            return {"extra_body": {"thinking": {"type": "enabled"}}}
+        if provider == "mistral":
+            return {"extra_body": {"reasoning_effort": "high"}}
         logger.warning("enable_thinking is set but provider for '%s' is not recognized; no thinking params sent", self.config.base_url)
         return {}
 
@@ -155,7 +177,8 @@ class LLMClient:
         thinking = self._thinking_kwargs()
         if thinking:
             kwargs.update(thinking)
-            if "reasoning_effort" in thinking:
+            extra = thinking.get("extra_body", {})
+            if "reasoning_effort" in extra or extra.get("thinking"):
                 kwargs.pop("temperature", None)
         if tools:
             kwargs["tools"] = tools
@@ -179,7 +202,8 @@ class LLMClient:
         thinking = self._thinking_kwargs()
         if thinking:
             kwargs.update(thinking)
-            if "reasoning_effort" in thinking:
+            extra = thinking.get("extra_body", {})
+            if "reasoning_effort" in extra or extra.get("thinking"):
                 kwargs.pop("temperature", None)
         response, raw_completion = self._instructor.chat.completions.create_with_completion(**kwargs)
         self._record_usage(raw_completion.usage)

@@ -6,6 +6,53 @@ from __future__ import annotations
 # Writer Agent Prompts
 # ==============================================================================
 
+WRITER_RESEARCH_SYSTEM_PROMPT = r"""\
+You are an expert research paper analyst preparing to write a detailed structured \
+analysis of a paper. Before writing, you should do thorough research to ensure you \
+understand all concepts, methods, and cited works in the paper.
+
+Use the available tools aggressively to:
+1. **Look up unfamiliar concepts, methods, or architectures** mentioned in the paper \
+   that you are unsure about. Search for them and read their abstracts to build understanding.
+2. **Read cited/previous works** that are important to understanding this paper's \
+   contribution. Use `read_paper` to get the full text of key cited papers when you \
+   need deeper context.
+3. **Clarify benchmarks, datasets, and evaluation metrics** if their purpose or \
+   significance is unclear from the paper text alone.
+4. **Resolve ambiguities** — if a referenced method or dataset name is ambiguous, \
+   search for it to confirm what it is.
+
+Research strategy:
+- Start by identifying concepts, methods, baselines, and cited works in the paper \
+  that you are unfamiliar with or need more context on.
+- Search for each using `search_papers`. For the most important ones, use \
+  `read_paper` to get their full text.
+- You do NOT need to research every single citation — focus on the ones that are \
+  central to understanding the paper's method, motivation, or evaluation.
+- Once you have gathered enough context, write a brief research summary of your \
+  findings that will help you write a more accurate and detailed analysis.
+
+When you have finished researching, provide your research notes as your final message.\
+"""
+
+WRITER_RESEARCH_USER_PROMPT_TEMPLATE = """\
+## Paper: {title}
+
+**Authors**: {authors}
+**Published**: {published}
+
+## Full Paper Content
+
+{markdown}
+
+---
+
+Please research any unfamiliar concepts, cited works, methods, benchmarks, or \
+datasets mentioned in this paper that you need more context on to write a thorough \
+and accurate analysis. Use the search and read tools to gather information, then \
+provide your research notes.
+"""
+
 WRITER_SYSTEM_PROMPT = r"""\
 You are an expert research paper analyst. Given the full text of a paper, produce a \
 detailed structured analysis. Be precise, thorough, and technical.
@@ -31,6 +78,27 @@ WRITER_USER_PROMPT_TEMPLATE = """\
 ## Full Paper Content
 
 {markdown}
+"""
+
+WRITER_WITH_RESEARCH_USER_PROMPT_TEMPLATE = """\
+## Paper: {title}
+
+**Authors**: {authors}
+**Published**: {published}
+
+## Full Paper Content
+
+{markdown}
+
+---
+
+## Research Notes (from prior investigation)
+
+The following research was conducted to clarify unfamiliar concepts, cited works, \
+and context before writing the analysis. Use these notes to write a more accurate, \
+thorough, and well-informed analysis.
+
+{research_notes}
 """
 
 # ==============================================================================

@@ -24,6 +24,7 @@ formats = ["md", "html"]
 download_pdf = true
 pdf_cache_dir = ".cache/pdfs"
 language = "English"  # output language for reports (e.g. "Chinese", "Japanese", "French")
+writer_research = true  # enable multi-turn research before writing (searches unfamiliar concepts & cited works)
 
 [scheduler]
 enabled = false

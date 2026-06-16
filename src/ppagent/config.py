@@ -92,6 +92,14 @@ class ReportConfig(BaseModel):
     pdf_cache_dir: str = ".cache/pdfs"
     custom_agents: list[str] = Field(default_factory=list)
     language: str = "English"
+    writer_research: bool = Field(
+        default=True,
+        description=(
+            "Enable multi-turn research before the writer produces its analysis. "
+            "The writer will search for unfamiliar concepts, cited works, and "
+            "benchmarks to produce a more thorough and accurate report."
+        ),
+    )
 
 
 class SchedulerConfig(BaseModel):
