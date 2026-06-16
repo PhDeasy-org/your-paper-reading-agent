@@ -76,15 +76,16 @@ def search(
         cfg.search.profile_path = profile
 
     console.print("[bold]Fetching papers from HuggingFace...[/bold]")
-    try:
-        papers = hf.list_papers(
-            date=date or cfg.search.default_date,
-            limit=limit or cfg.search.default_limit,
-            sort=cfg.search.sort,
-        )
-    except hf.HfCliError as exc:
-        console.print(f"[red]Error fetching papers:[/red] {exc}")
-        raise typer.Exit(1)
+    with console.status("[dim]Contacting HuggingFace API...[/dim]", spinner="dots"):
+        try:
+            papers = hf.list_papers(
+                date=date or cfg.search.default_date,
+                limit=limit or cfg.search.default_limit,
+                sort=cfg.search.sort,
+            )
+        except hf.HfCliError as exc:
+            console.print(f"[red]Error fetching papers:[/red] {exc}")
+            raise typer.Exit(1)
 
     console.print(f"Found [green]{len(papers)}[/green] papers. Scoring relevance...")
 
@@ -96,7 +97,8 @@ def search(
     profile_text = cfg.profile_path.read_text()
     llm = LLMClient(cfg.llms.searcher)
     searcher = SearcherAgent(llm, cfg)
-    result = searcher.run(papers=papers, profile=profile_text)
+    with console.status("[dim]Scoring paper relevance via Searcher LLM...[/dim]", spinner="dots"):
+        result = searcher.run(papers=papers, profile=profile_text)
 
     if not result.success:
         console.print(f"[red]Searcher failed:[/red] {result.error}")
