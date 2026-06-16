@@ -6,26 +6,14 @@ import logging
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentBase
+from ppagent.agents.prompts import (
+    WRITER_SYSTEM_PROMPT,
+    WRITER_USER_PROMPT_TEMPLATE,
+)
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, PaperContent, WriterOutput
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT = r"""\
-You are an expert research paper analyst. Given the full text of a paper, produce a \
-detailed structured analysis. Be precise, thorough, and technical.
-
-IMPORTANT: Use LaTeX formatting with `$` delimiters for all inline mathematical variables, symbols, and expressions (e.g., `$x_i$`, `$\mathcal{M}$`, `$\beta$`), and `$$` delimiters for block equations. Make sure all math content is enclosed in these delimiters for proper rendering.
-
-For each section:
-- **Keywords**: Extract 5-8 key technical terms/concepts from the paper.
-- **Affiliations**: List the institutional affiliations of the authors.
-- **Benchmarks**: List all benchmarks, datasets, and evaluation metrics used. If none, write "None reported."
-- **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
-- **Previous Works Summary**: Summarize the related work section — what prior methods exist and what are their limitations that motivate this work. For EACH mentioned prior work, method, framework, baseline, or dataset, you MUST include a Markdown hyperlink (e.g. `[Work Name](URL)`) to its official paper, arXiv page, or a search query link (e.g. `[Work Name](https://scholar.google.com/scholar?q=Work+Name)` or `[Work Name](https://arxiv.org/search/?query=Work+Name&searchtype=all)`). Make sure every claim or work mentioned is linked.
-- **Method Details**: Describe the proposed method in detail, including architecture, training procedure, key equations, and novel components. Be technical and thorough.
-- **Performance Evaluation**: Summarize the experimental results — main results, comparisons with baselines, ablation studies, and key findings. Include specific numbers where available.\
-"""
 
 
 @register_agent
@@ -37,19 +25,15 @@ class WriterAgent(AgentBase):
 
     def run(self, *, content: PaperContent) -> AgentResult:
         self.llm.reset_usage()
-        user_prompt = f"""\
-## Paper: {content.paper.title}
-
-**Authors**: {", ".join(content.paper.authors)}
-**Published**: {content.paper.published_at.strftime("%Y-%m-%d") if content.paper.published_at else "Unknown"}
-
-## Full Paper Content
-
-{content.markdown}
-"""
+        user_prompt = WRITER_USER_PROMPT_TEMPLATE.format(
+            title=content.paper.title,
+            authors=", ".join(content.paper.authors),
+            published=content.paper.published_at.strftime("%Y-%m-%d") if content.paper.published_at else "Unknown",
+            markdown=content.markdown,
+        )
 
         try:
-            system_prompt = _SYSTEM_PROMPT
+            system_prompt = WRITER_SYSTEM_PROMPT
             lang = self.config.report.language
             if lang and lang.lower() != "english":
                 system_prompt += f"\n\nIMPORTANT: Write ALL output text in {lang}. Keep paper titles, author names, and technical terms in their original language."

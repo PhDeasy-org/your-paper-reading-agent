@@ -7,36 +7,15 @@ from typing import Any
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentBase
+from ppagent.agents.prompts import (
+    CRITICIZER_SYSTEM_PROMPT,
+    CRITICIZER_USER_PROMPT_TEMPLATE,
+    CRITICIZER_WRITER_CONTEXT_TEMPLATE,
+)
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, CriticizerOutput, PaperContent
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT = r"""\
-You are a rigorous, skeptical senior researcher performing a critical audit of a paper. \
-Your role is to find limitations, weaknesses, and potential issues. Be thorough and honest.
-
-IMPORTANT: Use LaTeX formatting with `$` delimiters for all inline mathematical variables, symbols, and expressions (e.g., `$x_i$`, `$\mathcal{M}$`, `$\beta$`), and `$$` delimiters for block equations. Make sure all math content is enclosed in these delimiters for proper rendering.
-
-Evaluate the paper across these dimensions:
-1. **Methodology**: Are there methodological weaknesses? Missing ablations? Unjustified \
-   design choices? Is the method clearly reproducible?
-2. **Experimental Design**: Are the baselines fair and comprehensive? Are there \
-   missing comparisons? Are the benchmarks representative?
-3. **Results & Claims**: Do the results support the claims? Are there over-claimed \
-   results? Are error bars or statistical significance reported?
-4. **Scope & Generalization**: How well does the method generalize? Are there \
-   unstated assumptions about data, domains, or distributions?
-5. **Reproducibility**: Is sufficient detail provided to reproduce the work?
-6. **Ethics & Broader Impact**: Are there unaddressed ethical concerns?
-
-Rate each finding's severity:
-- **high**: Fundamental flaw that undermines the paper's core contribution
-- **medium**: Notable weakness that affects the paper's reliability or scope
-- **low**: Minor issue or missed opportunity that doesn't significantly impact conclusions
-
-Be specific and cite evidence from the paper where possible.\
-"""
 
 
 @register_agent
@@ -56,25 +35,21 @@ class CriticizerAgent(AgentBase):
         # Include writer's analysis for additional context
         writer_context = ""
         if writer_sections:
-            writer_context = f"""
-## Writer's Analysis Summary
-- **Method**: {writer_sections.get("method", "N/A")}
-- **Evaluation**: {writer_sections.get("evaluation", "N/A")}
-- **Previous Works**: {writer_sections.get("previous_works", "N/A")}
-"""
+            writer_context = CRITICIZER_WRITER_CONTEXT_TEMPLATE.format(
+                method=writer_sections.get("method", "N/A"),
+                evaluation=writer_sections.get("evaluation", "N/A"),
+                previous_works=writer_sections.get("previous_works", "N/A"),
+            )
 
-        user_prompt = f"""\
-## Paper: {content.paper.title}
-
-**Authors**: {", ".join(content.paper.authors)}
-{writer_context}
-## Full Paper Content
-
-{content.markdown}
-"""
+        user_prompt = CRITICIZER_USER_PROMPT_TEMPLATE.format(
+            title=content.paper.title,
+            authors=", ".join(content.paper.authors),
+            writer_context=writer_context,
+            markdown=content.markdown,
+        )
 
         try:
-            system_prompt = _SYSTEM_PROMPT
+            system_prompt = CRITICIZER_SYSTEM_PROMPT
             lang = self.config.report.language
             if lang and lang.lower() != "english":
                 system_prompt += f"\n\nIMPORTANT: Write ALL output text in {lang}. Keep paper titles and technical terms in their original language."

@@ -6,25 +6,14 @@ import logging
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentBase
+from ppagent.agents.prompts import (
+    SEARCHER_SYSTEM_PROMPT,
+    SEARCHER_USER_PROMPT_TEMPLATE,
+)
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, Paper, SearcherOutput
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT = """\
-You are a research paper recommendation agent. Given a user's research profile and a \
-list of recently published papers (with titles and abstracts), score each paper's \
-relevance to the user's interests on a scale from 0.0 to 1.0.
-
-Scoring guidelines:
-- 0.9-1.0: Directly addresses the user's core research areas
-- 0.7-0.89: Highly relevant to the user's specific interests
-- 0.5-0.69: Somewhat related, may contain useful insights
-- 0.3-0.49: Tangentially related
-- 0.0-0.29: Not relevant
-
-Score ALL papers provided. Be precise and differentiate well between papers.\
-"""
 
 _BATCH_SIZE = 20  # papers per LLM call to avoid context overflow
 
@@ -49,21 +38,14 @@ class SearcherAgent(AgentBase):
         # Build paper summaries for the LLM
         paper_list_text = self._format_papers(papers)
 
-        user_prompt = f"""\
-## User Research Profile
-
-{profile}
-
-## Papers to Score
-
-{paper_list_text}
-
-Please score each paper's relevance to this user profile.\
-"""
+        user_prompt = SEARCHER_USER_PROMPT_TEMPLATE.format(
+            profile=profile,
+            papers=paper_list_text,
+        )
 
         try:
             output: SearcherOutput = self.llm.chat_structured(
-                LLMClient.build_messages(_SYSTEM_PROMPT, user_prompt),
+                LLMClient.build_messages(SEARCHER_SYSTEM_PROMPT, user_prompt),
                 response_model=SearcherOutput,
             )
         except Exception as exc:

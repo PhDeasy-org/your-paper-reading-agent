@@ -8,6 +8,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+import re
+
+
 class Paper(BaseModel):
     """Represents a paper from HuggingFace daily papers."""
 
@@ -28,6 +31,32 @@ class Paper(BaseModel):
             self.pdf_url = f"https://arxiv.org/pdf/{self.id}"
         if not self.hf_url and self.id:
             self.hf_url = f"https://huggingface.co/papers/{self.id}"
+        if not self.published_at and self.id:
+            cleaned = self.id.split('/')[-1]
+            match = re.match(r'^(\d{2})(\d{2})\.\d+', cleaned)
+            if match:
+                yy, mm = match.groups()
+                try:
+                    y_val = int(yy)
+                    year = 2000 + y_val if y_val < 90 else 1900 + y_val
+                    month = int(mm)
+                    if 1 <= month <= 12:
+                        self.published_at = datetime(year, month, 1)
+                except ValueError:
+                    pass
+            else:
+                match_old = re.match(r'^(\d{2})(\d{2})\d+', cleaned)
+                if match_old:
+                    yy, mm = match_old.groups()
+                    try:
+                        y_val = int(yy)
+                        year = 2000 + y_val if y_val < 90 else 1900 + y_val
+                        month = int(mm)
+                        if 1 <= month <= 12:
+                            self.published_at = datetime(year, month, 1)
+                    except ValueError:
+                        pass
+
 
 
 class PaperContent(BaseModel):

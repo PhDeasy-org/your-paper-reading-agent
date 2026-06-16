@@ -133,3 +133,65 @@ def search_papers(query: str, *, limit: int = 10) -> list[Paper]:
     if isinstance(data, dict):
         data = data.get("papers", data.get("results", [data]))
     return [_parse_paper(item) for item in data if isinstance(item, dict)]
+
+
+def fetch_arxiv_info(paper_id: str) -> Paper | None:
+    """Fetch paper details from arXiv API as a fallback."""
+    import urllib.request
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+
+    cleaned_id = paper_id.split('/')[-1]
+    url = f"http://export.arxiv.org/api/query?id_list={cleaned_id}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "ppagent/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            xml_data = response.read()
+
+        root = ET.fromstring(xml_data)
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+        entry = root.find("atom:entry", ns)
+        if entry is None:
+            return None
+
+        title_el = entry.find("atom:title", ns)
+        if title_el is None or title_el.text is None:
+            return None
+
+        title = title_el.text.strip().replace("\n", " ")
+        title = " ".join(title.split())  # normalize whitespaces
+        if title.lower() == "error" or not title:
+            return None
+
+        pub_el = entry.find("atom:published", ns)
+        published_at = None
+        if pub_el is not None and pub_el.text:
+            try:
+                val = pub_el.text.strip()
+                published_at = datetime.fromisoformat(val.replace("Z", "+00:00"))
+            except Exception:
+                pass
+
+        authors = []
+        for author in entry.findall("atom:author", ns):
+            name_el = author.find("atom:name", ns)
+            if name_el is not None and name_el.text:
+                authors.append(name_el.text.strip())
+
+        summary = ""
+        summary_el = entry.find("atom:summary", ns)
+        if summary_el is not None and summary_el.text:
+            summary = summary_el.text.strip().replace("\n", " ")
+            summary = " ".join(summary.split())
+
+        return Paper(
+            id=cleaned_id,
+            title=title,
+            authors=authors,
+            published_at=published_at,
+            summary=summary,
+        )
+    except Exception as e:
+        logger.warning("Failed to fetch info from arXiv API for %s: %s", paper_id, e)
+        return None
+

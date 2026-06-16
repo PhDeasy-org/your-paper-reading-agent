@@ -9,20 +9,14 @@ from pathlib import Path
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentBase
+from ppagent.agents.prompts import (
+    FIGURE_SELECTOR_SYSTEM_PROMPT,
+    FIGURE_SELECTOR_USER_PROMPT_TEMPLATE,
+)
 from ppagent.figures import Figure
 from ppagent.models import AgentResult
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT = (
-    "You are an expert at reading research papers. You are shown several figures "
-    "extracted from a single paper, each labeled by its figure number and caption. "
-    "Select the ONE figure that best represents the paper's overall method, "
-    "architecture, or pipeline (i.e. an overview/framework diagram) — NOT a raw "
-    "results plot or ablation chart, unless no overview figure exists.\n\n"
-    "Respond with ONLY a JSON object: {\"figure_number\": <int>, \"reason\": \"<short>\"}. "
-    "Do not include any other text."
-)
 
 # Matches a JSON object {"figure_number": N, ...} even if wrapped in prose/markdown.
 _JSON_RE = re.compile(r"\{[^{}]*\"figure_number\"[^{}]*\}", re.IGNORECASE | re.DOTALL)
@@ -65,15 +59,13 @@ class FigureSelectorAgent(AgentBase):
         catalog_lines = [
             f"Figure {f.figure_number}: {f.caption}" for f in figures
         ]
-        user_text = (
-            "Here are the figures from the paper. Choose the single best "
-            "method/architecture/pipeline overview figure.\n\n"
-            + "\n".join(catalog_lines)
+        user_text = FIGURE_SELECTOR_USER_PROMPT_TEMPLATE.format(
+            catalog="\n".join(catalog_lines)
         )
         image_paths = [base_dir / f.image_path for f in figures]
 
         try:
-            raw = self.llm.chat_vision(_SYSTEM_PROMPT, user_text, image_paths)
+            raw = self.llm.chat_vision(FIGURE_SELECTOR_SYSTEM_PROMPT, user_text, image_paths)
         except Exception as exc:
             logger.warning("Figure selection LLM call failed: %s — defaulting to Figure 1", exc)
             fallback = self._lowest_numbered(figures)

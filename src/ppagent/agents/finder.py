@@ -7,27 +7,17 @@ import logging
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentWithTools, ToolDef
+from ppagent.agents.prompts import (
+    FINDER_SYSTEM_PROMPT,
+    FINDER_STRUCTURED_SYSTEM_PROMPT,
+    FINDER_USER_PROMPT_TEMPLATE,
+    FINDER_STRUCTURED_USER_PROMPT_TEMPLATE,
+)
 from ppagent.llm import LLMClient
 from ppagent import hf
 from ppagent.models import AgentResult, FinderOutput, PaperContent, Paper
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT = """\
-You are a research literature explorer. Given a paper's title and content, your job is to:
-
-1. Identify the key topics, methods, and claims of the paper.
-2. Use the search_papers tool to find impactful related and previous works. Perform \
-   multiple searches with different queries (e.g., the core method name, the benchmark \
-   used, the problem domain).
-3. After gathering results, produce a structured output with:
-   - A narrative section summarizing the landscape of related work and how the current \
-     paper fits in.
-   - A list of the most impactful related papers with their IDs and relevance.\
-
-Search for at least 3-5 different queries to ensure comprehensive coverage. Focus on \
-seminal works and recent impactful papers.\
-"""
 
 
 @register_agent
@@ -112,22 +102,14 @@ class FinderAgent(AgentWithTools):
 
     def run(self, *, content: PaperContent) -> AgentResult:
         self.llm.reset_usage()
-        user_prompt = f"""\
-## Paper: {content.paper.title}
+        user_prompt = FINDER_USER_PROMPT_TEMPLATE.format(
+            title=content.paper.title,
+            authors=", ".join(content.paper.authors),
+            summary=content.paper.summary,
+            excerpt=content.markdown[:3000],
+        )
 
-**Authors**: {", ".join(content.paper.authors)}
-
-## Paper Summary
-{content.paper.summary}
-
-## Paper Content (excerpt)
-{content.markdown[:3000]}
-
-Find impactful related and previous works. Search for the core method, key benchmarks, \
-and the problem domain. Then summarize the related work landscape.\
-"""
-
-        messages = LLMClient.build_messages(_SYSTEM_PROMPT, user_prompt)
+        messages = LLMClient.build_messages(FINDER_SYSTEM_PROMPT, user_prompt)
 
         lang = self.config.report.language
         if lang and lang.lower() != "english":
@@ -147,20 +129,14 @@ and the problem domain. Then summarize the related work landscape.\
             )
 
         # Now do a structured call to extract the final output
-        final_prompt = f"""\
-Based on the related works you found, produce a structured summary.
-
-Related work exploration results:
-{narrative}
-
-Extract: a narrative summary of the related work landscape, and a list of the top \
-related papers (with paper_id and title).\
-"""
+        final_prompt = FINDER_STRUCTURED_USER_PROMPT_TEMPLATE.format(
+            narrative=narrative
+        )
 
         try:
             output: FinderOutput = self.llm.chat_structured(
                 LLMClient.build_messages(
-                    "You extract structured related work information from research exploration results.",
+                    FINDER_STRUCTURED_SYSTEM_PROMPT,
                     final_prompt,
                 ),
                 response_model=FinderOutput,

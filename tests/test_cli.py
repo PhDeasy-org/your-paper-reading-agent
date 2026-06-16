@@ -145,3 +145,85 @@ def test_cli_config_init(tmp_path):
         result_again = runner.invoke(app, ["config", "init"])
         assert "Config already exists" in result_again.stdout
 
+
+def test_paper_published_at_parsing():
+    from datetime import datetime
+    p1 = Paper(id="2604.12345", title="Test Paper 1")
+    assert p1.published_at == datetime(2026, 4, 1)
+
+    p2 = Paper(id="1706.03762", title="Test Paper 2")
+    assert p2.published_at == datetime(2017, 6, 1)
+
+    p3 = Paper(id="hep-th/9703012", title="Test Paper 3")
+    assert p3.published_at == datetime(1997, 3, 1)
+
+    # If already set, should not override
+    p4 = Paper(id="2604.12345", title="Test Paper 4", published_at=datetime(2026, 4, 15))
+    assert p4.published_at == datetime(2026, 4, 15)
+
+
+def test_fetch_arxiv_info_success():
+    from ppagent.hf import fetch_arxiv_info
+    
+    mock_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>Test Arxiv Paper</title>
+    <published>2026-04-15T10:00:00Z</published>
+    <author><name>Author One</name></author>
+    <author><name>Author Two</name></author>
+    <summary>This is a summary.</summary>
+  </entry>
+</feed>"""
+    
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_response = MagicMock()
+        mock_response.read.return_value = mock_xml.encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+        
+        paper = fetch_arxiv_info("2604.12345")
+        assert paper is not None
+        assert paper.title == "Test Arxiv Paper"
+        assert paper.id == "2604.12345"
+        assert paper.authors == ["Author One", "Author Two"]
+        assert paper.summary == "This is a summary."
+
+
+def test_pipeline_arxiv_fallback_integration(mock_config):
+    from ppagent.pipeline import PaperPipeline
+    from ppagent.hf import HfCliError
+    
+    mock_config.llms.text.api_key = "dummy"
+    mock_config.llms.vision.api_key = "dummy"
+    mock_config.llms.searcher.api_key = "dummy"
+    
+    paper_id = "2606.01075"
+
+    
+    with patch("ppagent.hf.paper_info", side_effect=HfCliError("not found")), \
+         patch("ppagent.hf.fetch_arxiv_info") as mock_fetch_arxiv, \
+         patch("ppagent.hf.paper_read", return_value="some markdown content"), \
+         patch("ppagent.pdf.download_pdf"), \
+         patch("ppagent.pdf.extract_text"), \
+         patch("ppagent.agents.writer.WriterAgent.run") as mock_writer, \
+         patch("ppagent.agents.finder.FinderAgent.run") as mock_finder, \
+         patch("ppagent.agents.criticizer.CriticizerAgent.run") as mock_criticizer:
+         
+         from ppagent.models import AgentResult, Paper
+         mock_paper = Paper(id=paper_id, title="Attention Is All You Need")
+         mock_fetch_arxiv.return_value = mock_paper
+         
+         # Mock agents
+         mock_writer.return_value = AgentResult(agent_name="writer", success=True, data={})
+         mock_finder.return_value = AgentResult(agent_name="finder", success=True, data={})
+         mock_criticizer.return_value = AgentResult(agent_name="criticizer", success=True, data={})
+         
+         pipeline = PaperPipeline(mock_config)
+         report = pipeline.report(paper_id)
+         
+         assert report.paper.title == "Attention Is All You Need"
+         assert report.paper.published_at is not None
+         mock_fetch_arxiv.assert_called_once_with(paper_id)
+
+
+
