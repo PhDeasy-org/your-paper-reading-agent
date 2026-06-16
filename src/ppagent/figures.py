@@ -59,22 +59,43 @@ def _find_caption_lines(page: fitz.Page) -> list[tuple[int, fitz.Rect, str]]:
     for block in d.get("blocks", []):
         if block.get("type") != 0:  # 0 == text
             continue
-        # Join all spans in a line; captions often span multiple lines.
-        for line in block.get("lines", []):
+        lines = block.get("lines", [])
+        i = 0
+        while i < len(lines):
+            line = lines[i]
             spans = line.get("spans", [])
             if not spans:
+                i += 1
                 continue
             text = "".join(s.get("text", "") for s in spans).strip()
             m = _CAPTION_RE.match(text)
             if not m:
+                i += 1
                 continue
             # Captions are usually small/italic; grab the full line bbox.
-            bbox = fitz.Rect(line["bbox"])
+            fig_num = int(m.group(1))
+            first_line_bbox = fitz.Rect(line["bbox"])
+            caption_parts = [text]
+
             # Try to extend the caption text by walking forward through
             # subsequent lines in the same block (multi-line captions).
-            full = text
-            # Use block lines index to extend; collect following lines until a gap or new block.
-            results.append((int(m.group(1)), bbox, full))
+            j = i + 1
+            while j < len(lines):
+                next_line = lines[j]
+                next_spans = next_line.get("spans", [])
+                if not next_spans:
+                    j += 1
+                    continue
+                next_text = "".join(s.get("text", "") for s in next_spans).strip()
+                if _CAPTION_RE.match(next_text):
+                    break
+                if next_text:
+                    caption_parts.append(next_text)
+                j += 1
+
+            full = " ".join(caption_parts)
+            results.append((fig_num, first_line_bbox, full))
+            i = j
     return results
 
 
@@ -93,16 +114,34 @@ def _figure_region(page: fitz.Page, caption_bbox: fitz.Rect) -> fitz.Rect | None
 
     page_rect = page.rect
     caption_y = caption_bbox.y0
-    # Collect y-ranges of all text lines above the caption (and below top margin).
+    caption_width = caption_bbox.x1 - caption_bbox.x0
+    is_caption_page_wide = caption_width > 350
+
+    # Collect y-ranges of all text lines above the caption (and below top margin)
+    # that are in the same horizontal column/span as the caption.
     line_ys: list[tuple[float, float]] = []
     top_margin = 50
+    col_x0 = caption_bbox.x0
+    col_x1 = caption_bbox.x1
+
     for block in d.get("blocks", []):
         if block.get("type") != 0:
             continue
         for line in block.get("lines", []):
             r = fitz.Rect(line["bbox"])
             if r.y1 <= caption_y and r.y0 > top_margin:
-                line_ys.append((r.y0, r.y1))
+                # Check for horizontal overlap: line and caption must overlap horizontally.
+                # We use a margin of 10 points to be robust to minor alignment variations.
+                if r.x1 + 10 > caption_bbox.x0 and r.x0 - 10 < caption_bbox.x1:
+                    line_ys.append((r.y0, r.y1))
+
+                    # Update column boundaries. If the caption is column-wide,
+                    # we ignore page-wide text lines (e.g. title/abstract) to avoid
+                    # expanding the crop to the adjacent column.
+                    line_width = r.x1 - r.x0
+                    if is_caption_page_wide or (line_width <= 350):
+                        col_x0 = min(col_x0, r.x0)
+                        col_x1 = max(col_x1, r.x1)
 
     if not line_ys:
         # No text above; the figure likely starts near the top of the page.
@@ -112,27 +151,48 @@ def _figure_region(page: fitz.Page, caption_bbox: fitz.Rect) -> fitz.Rect | None
         # Find the largest gap between consecutive lines' y1 and next y0.
         prev_end: float | None = None
         max_gap = 0.0
-        gap_end = line_ys[0][0]
+        gap_start = line_ys[0][0]
+
         for y0, y1 in line_ys:
             if prev_end is not None:
                 g = y0 - prev_end
                 if g > max_gap:
                     max_gap = g
-                    gap_end = y0
+                    gap_start = prev_end
             prev_end = max(prev_end if prev_end is not None else y1, y1)
-        # If the largest gap is just above the caption region, use it; otherwise
-        # fall back to the first line above the caption (whole region is figure).
-        fig_top = gap_end if max_gap >= 20 else line_ys[0][0]
 
-    # Clip to text-column width (most papers are single-column here).
-    x0 = max(page_rect.x0, caption_bbox.x0 - _X_MARGIN)
-    x1 = min(page_rect.x1, caption_bbox.x1 + _X_MARGIN)
-    # Include a small strip of the caption so the label is visible in the crop.
+        # Also check the gap between the last text line and the caption itself.
+        if prev_end is not None:
+            g = caption_y - prev_end
+            if g > max_gap:
+                max_gap = g
+                gap_start = prev_end
+
+        # If the largest gap is significant, use its start; otherwise fall back
+        # to the very first line above the caption (whole region is figure).
+        fig_top = gap_start if max_gap >= 20 else line_ys[0][0]
+
+    # Expand column boundaries using image blocks in the figure region.
+    for block in d.get("blocks", []):
+        if block.get("type") == 1:  # Image block
+            r = fitz.Rect(block["bbox"])
+            if r.y1 <= caption_y and r.y0 >= fig_top:
+                # If the image block overlaps horizontally with the column
+                if r.x1 + 10 > col_x0 and r.x0 - 10 < col_x1:
+                    col_x0 = min(col_x0, r.x0)
+                    col_x1 = max(col_x1, r.x1)
+
+    # Clip to column width (which is bounded by the column's text/image lines).
+    # Add a tiny margin of 4 points on each side for aesthetic breathing room.
+    x0 = max(page_rect.x0, col_x0 - 4)
+    x1 = min(page_rect.x1, col_x1 + 4)
+
     y1 = caption_bbox.y1
     if y1 - fig_top < _MIN_FIGURE_HEIGHT:
         # Region too small to be a real figure (e.g. inline "Figure" mention).
         return None
     return fitz.Rect(x0, fig_top, x1, y1)
+
 
 
 def extract_figures(pdf_path: Path, out_dir: Path) -> list[Figure]:

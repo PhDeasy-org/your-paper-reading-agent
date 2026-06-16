@@ -144,56 +144,8 @@ class PaperPipeline:
 
         paper_content = PaperContent(paper=paper, markdown=content_md)
 
-        # Ensure we have the PDF downloaded for figure extraction.
-        # (hf papers read may have succeeded without a local PDF.)
-        self.console.print("[bold yellow]🔄 Phase 3/8: Ensuring PDF is downloaded for figure extraction...[/bold yellow]")
-        with self.console.status("[dim]Checking and downloading PDF if necessary...[/dim]", spinner="dots"):
-            if pdf_path is None and self.config.report.download_pdf:
-                try:
-                    self.console.print(f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]")
-                    pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
-                    self.console.print(f"  [green]✓[/green] PDF downloaded successfully to [dim]{pdf_path}[/dim]")
-                except Exception as exc:
-                    self.console.print(f"  [yellow]⚠[/yellow] Could not download PDF for figures: {exc}")
-                    pdf_path = None
-            elif pdf_path is not None:
-                self.console.print(f"  [green]✓[/green] PDF already available at [dim]{pdf_path}[/dim]")
-            else:
-                self.console.print("  [dim]PDF downloading is disabled; skipping PDF check.[/dim]")
-
-        # Extract captioned figures and let the selector pick the best one.
-        # Figures are written into the paper's report directory so they sit
-        # next to report.html and can be referenced by a relative path.
-        self.console.print("[bold yellow]🔄 Phase 4/8: Extracting and selecting paper figures...[/bold yellow]")
-        paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
-        selected_figure = None
-        figure_selector_result: AgentResult | None = None
-        if pdf_path is not None:
-            with self.console.status("[dim]Extracting figures and running Vision LLM selector...[/dim]", spinner="dots"):
-                try:
-                    self.console.print("  Extracting figures from PDF...")
-                    figures = figures_mod.extract_figures(pdf_path, paper_dir)
-                    self.console.print(f"  Found {len(figures)} figures/tables in the PDF.")
-                except Exception as exc:
-                    self.console.print(f"  [red]✗[/red] Figure extraction failed: {exc}")
-                    figures = []
-                if figures:
-                    self.console.print(f"  Running figure selector agent using vision model: [cyan]{self.config.llms.vision.model}[/cyan]...")
-                    figure_selector_result = self.figure_selector.run(figures=figures, base_dir=paper_dir)
-                    if figure_selector_result.success:
-                        selected_figure = figure_selector_result.data.get("selected_figure")
-                        if selected_figure:
-                            fig_title = selected_figure.caption[:60] + "..." if len(selected_figure.caption) > 60 else selected_figure.caption
-                            self.console.print(f"  [green]✓[/green] Selected figure: Figure {selected_figure.figure_number} - [italic]{fig_title}[/italic] (Path: {selected_figure.image_path})")
-                        else:
-                            self.console.print("  [dim]Figure selector completed, but no figure was chosen.[/dim]")
-                    else:
-                        self.console.print(f"  [red]✗[/red] Figure selector agent failed: {figure_selector_result.error}")
-        else:
-            self.console.print("  [dim]No PDF path available; skipping figure extraction.[/dim]")
-
         # Classify paper type
-        self.console.print("[bold yellow]🔄 Phase 5/8: Classifying paper type...[/bold yellow]")
+        self.console.print("[bold yellow]🔄 Phase 3/8: Classifying paper type...[/bold yellow]")
         paper_type = "method"  # default fallback
         with self.console.status("[dim]Running Classifier LLM...[/dim]", spinner="dots"):
             classifier_result = self.classifier.run(content=paper_content)
@@ -208,7 +160,7 @@ class PaperPipeline:
                 self.console.print(f"  [yellow]⚠[/yellow] Classification failed ({classifier_result.error}); defaulting to 'method'")
 
         # Run writer and finder in parallel
-        self.console.print("[bold yellow]🔄 Phase 6/8: Running Writer and Finder agents in parallel...[/bold yellow]")
+        self.console.print("[bold yellow]🔄 Phase 4/8: Running Writer and Finder agents in parallel...[/bold yellow]")
         writer_result: AgentResult | None = None
         finder_result: AgentResult | None = None
 
@@ -241,7 +193,7 @@ class PaperPipeline:
             finder_result = AgentResult(agent_name="finder", success=False, error="Finder did not complete")
 
         # Criticizer depends on writer output
-        self.console.print("[bold yellow]🔄 Phase 7/8: Running Criticizer agent to refine report...[/bold yellow]")
+        self.console.print("[bold yellow]🔄 Phase 5/8: Running Criticizer agent to refine report...[/bold yellow]")
         with self.console.status("[dim]Running Criticizer LLM...[/dim]", spinner="dots"):
             self.console.print(f"  Running Criticizer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]...")
             criticizer_result = self.criticizer.run(
@@ -253,6 +205,54 @@ class PaperPipeline:
                 self.console.print("  [green]✓[/green] Criticizer agent completed successfully.")
             else:
                 self.console.print(f"  [red]✗[/red] Criticizer agent failed: {criticizer_result.error}")
+
+        # Ensure we have the PDF downloaded for figure extraction.
+        # (hf papers read may have succeeded without a local PDF.)
+        self.console.print("[bold yellow]🔄 Phase 6/8: Ensuring PDF is downloaded for figure extraction...[/bold yellow]")
+        with self.console.status("[dim]Checking and downloading PDF if necessary...[/dim]", spinner="dots"):
+            if pdf_path is None and self.config.report.download_pdf:
+                try:
+                    self.console.print(f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]")
+                    pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
+                    self.console.print(f"  [green]✓[/green] PDF downloaded successfully to [dim]{pdf_path}[/dim]")
+                except Exception as exc:
+                    self.console.print(f"  [yellow]⚠[/yellow] Could not download PDF for figures: {exc}")
+                    pdf_path = None
+            elif pdf_path is not None:
+                self.console.print(f"  [green]✓[/green] PDF already available at [dim]{pdf_path}[/dim]")
+            else:
+                self.console.print("  [dim]PDF downloading is disabled; skipping PDF check.[/dim]")
+
+        # Extract captioned figures and let the selector pick the best one.
+        # Figures are written into the paper's report directory so they sit
+        # next to report.html and can be referenced by a relative path.
+        self.console.print("[bold yellow]🔄 Phase 7/8: Extracting and selecting paper figures...[/bold yellow]")
+        paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
+        selected_figure = None
+        figure_selector_result: AgentResult | None = None
+        if pdf_path is not None:
+            with self.console.status("[dim]Extracting figures and running Vision LLM selector...[/dim]", spinner="dots"):
+                try:
+                    self.console.print("  Extracting figures from PDF...")
+                    figures = figures_mod.extract_figures(pdf_path, paper_dir)
+                    self.console.print(f"  Found {len(figures)} figures/tables in the PDF.")
+                except Exception as exc:
+                    self.console.print(f"  [red]✗[/red] Figure extraction failed: {exc}")
+                    figures = []
+                if figures:
+                    self.console.print(f"  Running figure selector agent using vision model: [cyan]{self.config.llms.vision.model}[/cyan]...")
+                    figure_selector_result = self.figure_selector.run(figures=figures, base_dir=paper_dir)
+                    if figure_selector_result.success:
+                        selected_figure = figure_selector_result.data.get("selected_figure")
+                        if selected_figure:
+                            fig_title = selected_figure.caption[:60] + "..." if len(selected_figure.caption) > 60 else selected_figure.caption
+                            self.console.print(f"  [green]✓[/green] Selected figure: Figure {selected_figure.figure_number} - [italic]{fig_title}[/italic] (Path: {selected_figure.image_path})")
+                        else:
+                            self.console.print("  [dim]Figure selector completed, but no figure was chosen.[/dim]")
+                    else:
+                        self.console.print(f"  [red]✗[/red] Figure selector agent failed: {figure_selector_result.error}")
+        else:
+            self.console.print("  [dim]No PDF path available; skipping figure extraction.[/dim]")
 
         # Assemble
         self.console.print("[bold yellow]🔄 Phase 8/8: Assembling final report...[/bold yellow]")

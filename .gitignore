@@ -18,3 +18,4 @@ config/settings.toml
 
 # misc
 .qoder
+scratch/
