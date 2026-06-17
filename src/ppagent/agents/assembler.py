@@ -10,7 +10,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from ppagent.figures import Figure
+from ppagent.figures import FIGURE_SECTIONS, Figure, SelectedFigure
 from ppagent.models import AgentResult, Paper, PaperReport, ReportSection
 from ppagent.storage import Storage
 
@@ -280,7 +280,7 @@ class Assembler:
         criticizer_result: AgentResult,
         figure_selector_result: AgentResult | None = None,
         classifier_result: AgentResult | None = None,
-        selected_figure: Figure | None = None,
+        selected_figures: list[SelectedFigure] | None = None,
         paper_type: str = "method",
     ) -> tuple[PaperReport, str, str]:
         """Assemble all agent results into a PaperReport + rendered Markdown + HTML.
@@ -367,8 +367,8 @@ class Assembler:
         )
 
         # Render templates
-        md_content = self._render_md(report, w, f, selected_figure, section_labels)
-        html_content = self._render_html(report, w, f, md_content, selected_figure, section_labels)
+        md_content = self._render_md(report, w, f, selected_figures, section_labels)
+        html_content = self._render_html(report, w, f, md_content, selected_figures, section_labels)
 
         # Save to disk
         self.storage.save_report(
@@ -457,13 +457,23 @@ class Assembler:
         report: PaperReport,
         writer_data: dict,
         finder_data: dict,
-        selected_figure: Figure | None = None,
+        selected_figures: list[SelectedFigure] | None = None,
         section_labels: dict[str, str] | None = None,
     ) -> dict:
         from ppagent.agents.prompts import WRITER_SECTION_LABELS, DEFAULT_PAPER_TYPE
 
         if section_labels is None:
             section_labels = WRITER_SECTION_LABELS[DEFAULT_PAPER_TYPE]
+
+        # Group selected figures by their target section so templates can render
+        # each one inside the section it illustrates.
+        figures_by_section: dict[str, list[Figure]] = {s: [] for s in FIGURE_SECTIONS}
+        for sf in selected_figures or []:
+            bucket = figures_by_section.setdefault(
+                sf.section if sf.section in FIGURE_SECTIONS else "method", []
+            )
+            bucket.append(sf.figure)
+
         return {
             "paper": report.paper,
             "paper_type": report.paper_type,
@@ -481,7 +491,8 @@ class Assembler:
             "keywords": writer_data.get("keywords", []),
             "affiliations": writer_data.get("affiliations", []),
             "finder_narrative": finder_data.get("narrative", ""),
-            "selected_figure": selected_figure,
+            "selected_figures": selected_figures or [],
+            "figures_by_section": figures_by_section,
             "usage": report.usage,
             "cost_report": report.cost_report,
         }
@@ -491,7 +502,7 @@ class Assembler:
         report: PaperReport,
         writer_data: dict,
         finder_data: dict,
-        selected_figure: Figure | None = None,
+        selected_figures: list[SelectedFigure] | None = None,
         section_labels: dict[str, str] | None = None,
     ) -> str:
         """Render the Markdown report."""
@@ -500,7 +511,7 @@ class Assembler:
                 template = self.env.get_template("report.md.jinja2")
                 return template.render(
                     **self._template_context(
-                        report, writer_data, finder_data, selected_figure, section_labels
+                        report, writer_data, finder_data, selected_figures, section_labels
                     )
                 )
             except Exception as exc:
@@ -514,7 +525,7 @@ class Assembler:
         writer_data: dict,
         finder_data: dict,
         md_content: str,
-        selected_figure: Figure | None = None,
+        selected_figures: list[SelectedFigure] | None = None,
         section_labels: dict[str, str] | None = None,
     ) -> str:
         """Render the HTML report."""
@@ -523,7 +534,7 @@ class Assembler:
                 template = self.env.get_template("report.html.jinja2")
                 return template.render(
                     **self._template_context(
-                        report, writer_data, finder_data, selected_figure, section_labels
+                        report, writer_data, finder_data, selected_figures, section_labels
                     ),
                     markdown_content=md_content,
                 )

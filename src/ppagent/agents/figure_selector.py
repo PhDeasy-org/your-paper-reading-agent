@@ -1,4 +1,10 @@
-"""Figure selector agent — picks the best pipeline/method figure via vision LLM."""
+"""Figure selector agent — lets a vision LLM decide which figures to insert.
+
+The LLM may return any subset of the candidate figures (including none) and
+assigns each chosen figure to the report section it best illustrates. This
+replaces the previous "always pick exactly one" behaviour: we no longer force
+a figure into the report — the LLM decides whether, how many, and where.
+"""
 
 from __future__ import annotations
 
@@ -13,27 +19,32 @@ from ppagent.agents.prompts import (
     FIGURE_SELECTOR_SYSTEM_PROMPT,
     FIGURE_SELECTOR_USER_PROMPT_TEMPLATE,
 )
-from ppagent.figures import Figure
+from ppagent.figures import FIGURE_SECTIONS, Figure, SelectedFigure
 from ppagent.models import AgentResult
 
 logger = logging.getLogger(__name__)
 
-# Matches a JSON object {"figure_number": N, ...} even if wrapped in prose/markdown.
-_JSON_RE = re.compile(r"\{[^{}]*\"figure_number\"[^{}]*\}", re.IGNORECASE | re.DOTALL)
+# Matches a JSON object containing a "selected" key (possibly wrapped in prose).
+_JSON_RE = re.compile(r"\{.*\"selected\".*\}", re.IGNORECASE | re.DOTALL)
 
 
 @register_agent
 class FigureSelectorAgent(AgentBase):
-    """Picks the most representative method/pipeline figure from candidates."""
+    """Lets the vision LLM decide which figures (if any) to insert, and where."""
 
     name = "figure_selector"
-    description = "Selects the best pipeline/method figure from extracted PDF figures."
+    description = "Selects which paper figures to insert and their report section via vision LLM."
 
     def run(self, *, figures: list[Figure], base_dir: Path) -> AgentResult:  # type: ignore[override]
-        """Select the best figure.
+        """Select figures to insert.
 
         ``base_dir`` is the paper's report directory (parent of ``figures/``),
         used to resolve each figure's relative ``image_path`` to an absolute file.
+
+        Returns an AgentResult whose ``data`` has:
+            - ``selected_figures``: list[SelectedFigure] (possibly empty)
+            - ``figures``: the full candidate list
+            - ``none_reason``: optional string explaining an empty selection
         """
         self.llm.reset_usage()
 
@@ -41,21 +52,10 @@ class FigureSelectorAgent(AgentBase):
             return AgentResult(
                 agent_name=self.name,
                 success=True,
-                data={"selected_figure": None, "figures": []},
+                data={"selected_figures": [], "figures": [], "none_reason": None},
                 usage=self.llm.get_usage(),
             )
 
-        # Single candidate: pick it directly, no LLM call needed.
-        if len(figures) == 1:
-            logger.info("Only one figure (%s); selecting without LLM call", figures[0])
-            return AgentResult(
-                agent_name=self.name,
-                success=True,
-                data={"selected_figure": figures[0], "figures": figures},
-                usage=self.llm.get_usage(),
-            )
-
-        # Build a textual catalog and resolve image file paths.
         catalog_lines = [
             f"Figure {f.figure_number}: {f.caption}" for f in figures
         ]
@@ -67,50 +67,88 @@ class FigureSelectorAgent(AgentBase):
         try:
             raw = self.llm.chat_vision(FIGURE_SELECTOR_SYSTEM_PROMPT, user_text, image_paths)
         except Exception as exc:
-            logger.warning("Figure selection LLM call failed: %s — defaulting to Figure 1", exc)
-            fallback = self._lowest_numbered(figures)
+            logger.warning(
+                "Figure selection LLM call failed: %s — inserting no figures", exc
+            )
             return AgentResult(
                 agent_name=self.name,
                 success=True,
-                data={"selected_figure": fallback, "figures": figures},
+                data={
+                    "selected_figures": [],
+                    "figures": figures,
+                    "none_reason": f"LLM call failed: {exc}",
+                },
                 usage=self.llm.get_usage(),
             )
 
-        chosen = self._parse_choice(raw, figures)
-        if chosen is None:
-            logger.warning("Could not parse figure choice from LLM response: %r — defaulting to Figure 1", raw)
-            chosen = self._lowest_numbered(figures)
+        selected, none_reason = self._parse_choice(raw, figures)
+        if not selected:
+            logger.info(
+                "Figure selector returned no figures to insert; reason: %s",
+                none_reason or "not specified",
+            )
 
         return AgentResult(
             agent_name=self.name,
             success=True,
-            data={"selected_figure": chosen, "figures": figures},
+            data={
+                "selected_figures": selected,
+                "figures": figures,
+                "none_reason": none_reason,
+            },
             usage=self.llm.get_usage(),
         )
 
     @staticmethod
-    def _parse_choice(raw: str, figures: list[Figure]) -> Figure | None:
-        """Extract the chosen figure_number from the LLM's text response."""
+    def _parse_choice(
+        raw: str, figures: list[Figure]
+    ) -> tuple[list[SelectedFigure], str | None]:
+        """Extract the chosen figures + their sections from the LLM response.
+
+        Returns (selected_figures, none_reason). Unknown figure numbers are
+        dropped, unknown sections are coerced to "method", and duplicate figure
+        numbers keep only the first occurrence.
+        """
         if not raw:
-            return None
+            return [], None
+
         by_number = {f.figure_number: f for f in figures}
-        # Try direct JSON parse first.
+
+        obj: dict | None = None
         m = _JSON_RE.search(raw)
         candidate = m.group(0) if m else raw
         try:
             obj = json.loads(candidate)
-            num = int(obj.get("figure_number", -1))
-            if num in by_number:
-                return by_number[num]
         except (json.JSONDecodeError, ValueError, TypeError):
             pass
-        # Fallback: scan for the first "Figure N" mention present in our set.
-        for m in re.finditer(r"Figure\s+(\d+)", raw, re.IGNORECASE):
-            num = int(m.group(1))
-            if num in by_number:
-                return by_number[num]
-        return None
 
-    @staticmethod
-    def _lowest_numbered(figures: list[Figure]) -> Figure:
-        return min(figures, key=lambda f: f.figure_number)
+        if not isinstance(obj, dict):
+            return [], None
+
+        none_reason = obj.get("none_reason")
+        raw_selected = obj.get("selected")
+        if not isinstance(raw_selected, list):
+            return [], _none_reason_str(none_reason)
+
+        seen: set[int] = set()
+        out: list[SelectedFigure] = []
+        for entry in raw_selected:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                num = int(entry.get("figure_number", -1))
+            except (TypeError, ValueError):
+                continue
+            if num not in by_number or num in seen:
+                continue
+            section = str(entry.get("section", "method")).strip().lower()
+            if section not in FIGURE_SECTIONS:
+                section = "method"
+            out.append(SelectedFigure(figure=by_number[num], section=section))
+            seen.add(num)
+
+        return out, _none_reason_str(none_reason)
+
+
+def _none_reason_str(value: object) -> str | None:
+    return str(value).strip() if isinstance(value, str) and value.strip() else None

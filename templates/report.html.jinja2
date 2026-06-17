@@ -960,6 +960,15 @@
 </aside>
 
 <main class="main-content">
+  {#- Macro: render all figures assigned to a given report section (0..N). -#}
+  {%- macro render_figures(section_key) -%}
+  {%- for fig in figures_by_section.get(section_key, []) %}
+    <figure class="paper-figure">
+      <img src="{{ fig.image_path }}" alt="{{ fig.caption }}" loading="lazy">
+      <figcaption>{{ fig.caption }}</figcaption>
+    </figure>
+  {%- endfor -%}
+  {%- endmacro -%}
   <header class="main-header">
     <h1>{{ paper.title }}</h1>
     {% if affiliations %}
@@ -1052,6 +1061,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
       {{ section_labels.benchmarks_heading | default('Benchmarks') }}
     </h2>
+    {{ render_figures('benchmarks') }}
     <div class="markdown-body">
       {{ benchmarks.content | markdown }}
     </div>
@@ -1062,6 +1072,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/><line x1="12" x2="12" y1="7" y2="12"/><line x1="12" x2="16" y1="12" y2="14"/></svg>
       Previous Work &amp; Limitations
     </h2>
+    {{ render_figures('previous_works') }}
     <div class="markdown-body">
       {{ previous_works.content | markdown }}
     </div>
@@ -1084,12 +1095,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
       {{ section_labels.method_heading | default('Method') }}
     </h2>
-    {% if selected_figure %}
-    <figure class="paper-figure">
-      <img src="{{ selected_figure.image_path }}" alt="{{ selected_figure.caption }}" loading="lazy">
-      <figcaption>{{ selected_figure.caption }}</figcaption>
-    </figure>
-    {% endif %}
+    {{ render_figures('method') }}
     <div class="markdown-body">
       {{ method.content | markdown }}
     </div>
@@ -1100,6 +1106,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heading-icon"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0Z"/></svg>
       {{ section_labels.evaluation_heading | default('Performance Evaluation') }}
     </h2>
+    {{ render_figures('evaluation') }}
     <div class="markdown-body">
       {{ evaluation.content | markdown }}
     </div>

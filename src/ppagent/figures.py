@@ -47,6 +47,25 @@ class Figure:
         return f"Figure {self.figure_number}"
 
 
+# Report sections that a selected figure may be assigned to. Kept stable
+# across paper types: the heading *text* varies (see WRITER_SECTION_LABELS),
+# but the report always renders these section blocks.
+FIGURE_SECTIONS: tuple[str, ...] = ("method", "evaluation", "benchmarks", "previous_works")
+
+
+@dataclass
+class SelectedFigure:
+    """A figure chosen by the figure_selector, along with the report section
+    it should be rendered in (one of ``FIGURE_SECTIONS``).
+    """
+
+    figure: Figure
+    section: str
+
+    def __str__(self) -> str:
+        return f"Figure {self.figure.figure_number} → {self.section}"
+
+
 def _find_caption_lines(page: fitz.Page) -> list[tuple[int, fitz.Rect, str]]:
     """Return (figure_number, bbox, full_caption_text) for each caption on the page."""
     results: list[tuple[int, fitz.Rect, str]] = []

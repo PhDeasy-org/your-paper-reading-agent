@@ -1,3 +1,12 @@
+{#- Render the figures assigned to a given report section (0..N). -#}
+{%- macro figures_for(section) -%}
+{%- for fig in figures_by_section.get(section, []) %}
+![{{ fig.caption }}]({{ fig.image_path }})
+
+*{{ fig.caption }}*
+
+{% endfor -%}
+{%- endmacro -%}
 # {{ paper.title }}
 
 > **TL;DR**: {{ tldr.content }}
@@ -15,11 +24,11 @@
 
 ## {{ section_labels.benchmarks_heading | default('Benchmarks') }}
 
-{{ benchmarks.content }}
+{{ figures_for('benchmarks') }}{{ benchmarks.content }}
 
 ## Previous Work & Limitations
 
-{{ previous_works.content }}
+{{ figures_for('previous_works') }}{{ previous_works.content }}
 
 {% if finder_narrative %}
 ### Related Work Landscape
@@ -29,17 +38,11 @@
 
 ## {{ section_labels.method_heading | default('Method') }}
 
-{% if selected_figure %}
-![{{ selected_figure.caption }}]({{ selected_figure.image_path }})
-
-*{{ selected_figure.caption }}*
-
-{% endif %}
-{{ method.content }}
+{{ figures_for('method') }}{{ method.content }}
 
 ## {{ section_labels.evaluation_heading | default('Performance Evaluation') }}
 
-{{ evaluation.content }}
+{{ figures_for('evaluation') }}{{ evaluation.content }}
 
 ## Critical Analysis
 

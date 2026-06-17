@@ -223,12 +223,14 @@ class PaperPipeline:
             else:
                 self.console.print("  [dim]PDF downloading is disabled; skipping PDF check.[/dim]")
 
-        # Extract captioned figures and let the selector pick the best one.
+        # Extract captioned figures and let the vision LLM decide which (if any)
+        # to insert. The LLM may pick zero, one, or several figures and assign
+        # each to the report section it best illustrates.
         # Figures are written into the paper's report directory so they sit
         # next to report.html and can be referenced by a relative path.
         self.console.print("[bold yellow]🔄 Phase 7/8: Extracting and selecting paper figures...[/bold yellow]")
         paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
-        selected_figure = None
+        selected_figures: list[figures_mod.SelectedFigure] = []
         figure_selector_result: AgentResult | None = None
         if pdf_path is not None:
             with self.console.status("[dim]Extracting figures and running Vision LLM selector...[/dim]", spinner="dots"):
@@ -243,12 +245,16 @@ class PaperPipeline:
                     self.console.print(f"  Running figure selector agent using vision model: [cyan]{self.config.llms.vision.model}[/cyan]...")
                     figure_selector_result = self.figure_selector.run(figures=figures, base_dir=paper_dir)
                     if figure_selector_result.success:
-                        selected_figure = figure_selector_result.data.get("selected_figure")
-                        if selected_figure:
-                            fig_title = selected_figure.caption[:60] + "..." if len(selected_figure.caption) > 60 else selected_figure.caption
-                            self.console.print(f"  [green]✓[/green] Selected figure: Figure {selected_figure.figure_number} - [italic]{fig_title}[/italic] (Path: {selected_figure.image_path})")
+                        selected_figures = figure_selector_result.data.get("selected_figures", [])
+                        if selected_figures:
+                            self.console.print(f"  [green]✓[/green] Selected {len(selected_figures)} figure(s):")
+                            for sf in selected_figures:
+                                fig_title = sf.figure.caption[:60] + "..." if len(sf.figure.caption) > 60 else sf.figure.caption
+                                self.console.print(f"    • Figure {sf.figure.figure_number} → [cyan]{sf.section}[/cyan] - [italic]{fig_title}[/italic]")
                         else:
-                            self.console.print("  [dim]Figure selector completed, but no figure was chosen.[/dim]")
+                            none_reason = figure_selector_result.data.get("none_reason")
+                            reason_msg = f" (reason: {none_reason})" if none_reason else ""
+                            self.console.print(f"  [dim]Figure selector chose not to insert any figures{reason_msg}.[/dim]")
                     else:
                         self.console.print(f"  [red]✗[/red] Figure selector agent failed: {figure_selector_result.error}")
         else:
@@ -264,7 +270,7 @@ class PaperPipeline:
                 criticizer_result=criticizer_result,
                 figure_selector_result=figure_selector_result,
                 classifier_result=classifier_result,
-                selected_figure=selected_figure,
+                selected_figures=selected_figures or None,
                 paper_type=paper_type,
             )
             self.console.print("  [green]✓[/green] Report assembled successfully!")

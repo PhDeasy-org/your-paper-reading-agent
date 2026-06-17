@@ -1,6 +1,12 @@
 import pytest
 from ppagent.config import AppConfig
-from ppagent.tui import detect_vendor, get_menu_definition, VENDORS
+from ppagent.tui import (
+    detect_vendor,
+    get_menu_definition,
+    VENDORS,
+    _switch_vendor,
+    _snapshot_active_vendor,
+)
 
 def test_detect_vendor():
     # Test standard vendors
@@ -52,3 +58,112 @@ def test_get_menu_definition_vendor_setting():
     # Check menu items for Custom OpenAI Compatible - API Base URL should be in the fields
     custom_settings = get_menu_definition("llm_text_custom", cfg)
     assert any(item.label == "API Base URL" for item in custom_settings)
+
+
+def test_switch_vendor_preserves_each_provider_values():
+    """Switching providers should keep each provider's own api_key/model.
+
+    This is the regression test for the bug where values entered for one
+    provider leaked into every other provider's settings page.
+    """
+    cfg = AppConfig()
+    # Start: text role is OpenAI (the default base_url).
+    assert detect_vendor(cfg.llms.text.base_url) == "openai"
+
+    # Enter DeepSeek and fill in its credentials/model.
+    _switch_vendor(cfg, "text", "deepseek")
+    cfg.llms.text.api_key = "deepseek-key"
+    cfg.llms.text.model = "deepseek-chat"
+
+    # Switch to Qwen and fill in different credentials.
+    _switch_vendor(cfg, "text", "qwen")
+    cfg.llms.text.api_key = "qwen-key"
+    cfg.llms.text.model = "qwen-plus"
+
+    # The live config now reflects Qwen.
+    assert cfg.llms.text.api_key == "qwen-key"
+    assert cfg.llms.text.model == "qwen-plus"
+    assert detect_vendor(cfg.llms.text.base_url) == "qwen"
+
+    # Switching back to DeepSeek restores DeepSeek's values (NOT qwen's).
+    _switch_vendor(cfg, "text", "deepseek")
+    assert cfg.llms.text.api_key == "deepseek-key"
+    assert cfg.llms.text.model == "deepseek-chat"
+    assert detect_vendor(cfg.llms.text.base_url) == "deepseek"
+
+    # And the live DeepSeek edit didn't overwrite the stored Qwen snapshot.
+    _switch_vendor(cfg, "text", "qwen")
+    assert cfg.llms.text.api_key == "qwen-key"
+    assert cfg.llms.text.model == "qwen-plus"
+
+
+def test_switch_vendor_seeds_fresh_config_on_first_visit():
+    """A never-before-used vendor gets a fresh config with its base_url/model."""
+    cfg = AppConfig()  # text defaults to openai
+    _switch_vendor(cfg, "text", "glm")
+    assert detect_vendor(cfg.llms.text.base_url) == "glm"
+    assert cfg.llms.text.api_key == ""  # blank creds, not the openai default
+    # Model is seeded from the vendor's default_model.
+    assert cfg.llms.text.model == _vendor_default("glm")
+
+
+def _vendor_default(vendor_key: str) -> str:
+    for v in VENDORS:
+        if v["key"] == vendor_key:
+            return v.get("default_model") or ""
+    return ""
+
+
+def test_switch_vendor_same_vendor_is_noop():
+    """Re-entering the already-active vendor must not wipe current edits."""
+    cfg = AppConfig()
+    _switch_vendor(cfg, "text", "deepseek")
+    cfg.llms.text.api_key = "deepseek-key"
+    cfg.llms.text.model = "deepseek-chat"
+    # Re-select the same active vendor — values must survive.
+    _switch_vendor(cfg, "text", "deepseek")
+    assert cfg.llms.text.api_key == "deepseek-key"
+    assert cfg.llms.text.model == "deepseek-chat"
+
+
+def test_snapshot_active_vendor_then_save_persists_active_edits(tmp_path):
+    """save_config snapshots the active vendor for each role before writing."""
+    from ppagent.tui import save_config
+
+    cfg = AppConfig()
+    cfg.root = tmp_path
+    _switch_vendor(cfg, "text", "deepseek")
+    cfg.llms.text.api_key = "deepseek-key"
+    cfg.llms.text.model = "deepseek-chat"
+
+    config_file = tmp_path / "settings.toml"
+    save_config(cfg, config_file)
+
+    # The active DeepSeek config was snapshotted under its vendor key.
+    assert cfg.llms.saved_vendors["text"]["deepseek"].api_key == "deepseek-key"
+    assert cfg.llms.saved_vendors["text"]["deepseek"].model == "deepseek-chat"
+
+    # Reload and verify the TOML round-trips saved_vendors correctly.
+    import tomllib
+    with open(config_file, "rb") as f:
+        raw = tomllib.load(f)
+    assert raw["llms"]["saved_vendors"]["text"]["deepseek"]["api_key"] == "deepseek-key"
+    assert raw["llms"]["text"]["api_key"] == "deepseek-key"
+
+
+def test_vision_and_searcher_roles_independent():
+    """Switching vendors in one role must not bleed into the other roles."""
+    cfg = AppConfig()
+    _switch_vendor(cfg, "vision", "glm")
+    cfg.llms.vision.api_key = "glm-vision-key"
+    _switch_vendor(cfg, "searcher", "deepseek")
+    cfg.llms.searcher.api_key = "ds-searcher-key"
+
+    # Text role is untouched by the above switches.
+    assert detect_vendor(cfg.llms.text.base_url) == "openai"
+    assert cfg.llms.text.api_key == ""
+
+    # Each role retains its own active provider.
+    assert cfg.llms.vision.api_key == "glm-vision-key"
+    assert cfg.llms.searcher.api_key == "ds-searcher-key"
+

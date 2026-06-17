@@ -43,39 +43,44 @@ def test_extract_figures_returns_empty_for_missing_pdf(tmp_report_dir):
 
 
 def test_figure_selector_no_figures(mock_llm_client_unused):
-    """With zero candidates the selector returns None without an LLM call."""
+    """With zero candidates the selector returns an empty list without an LLM call."""
     cfg = _minimal_config()
     agent = FigureSelectorAgent(mock_llm_client_unused, cfg)
     result = agent.run(figures=[], base_dir=Path("/tmp"))
 
     assert result.success
-    assert result.data["selected_figure"] is None
+    assert result.data["selected_figures"] == []
     assert result.data["figures"] == []
 
 
-def test_figure_selector_single_candidate_skips_llm(tmp_path):
-    """A single figure is selected directly — no LLM call should happen."""
+def test_figure_selector_single_candidate_calls_llm(tmp_path):
+    """A single figure still goes through the LLM (the LLM may decline it)."""
     fig = Figure(figure_number=3, caption="only one", image_path="figures/figure_3.png")
+    p = tmp_path / fig.image_path
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"\x89PNG\r\n\x1a\n")
 
-    class BoomLLM:
+    class AcceptLLM:
         def reset_usage(self):
-            self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            self.usage = {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
 
         def get_usage(self):
             return self.usage
 
-        def chat_vision(self, *a, **k):
-            raise AssertionError("chat_vision must not be called for a single figure")
+        def chat_vision(self, system, user_text, images):
+            return '{"selected": [{"figure_number": 3, "section": "method", "reason": "overview"}], "none_reason": ""}'
 
-    agent = FigureSelectorAgent(BoomLLM(), _minimal_config())  # type: ignore[arg-type]
+    agent = FigureSelectorAgent(AcceptLLM(), _minimal_config())  # type: ignore[arg-type]
     result = agent.run(figures=[fig], base_dir=tmp_path)
 
     assert result.success
-    assert result.data["selected_figure"] is fig
+    assert len(result.data["selected_figures"]) == 1
+    assert result.data["selected_figures"][0].figure is fig
+    assert result.data["selected_figures"][0].section == "method"
 
 
 def test_figure_selector_parses_llm_choice(tmp_path):
-    """The selector should map the LLM's JSON figure_number to the right Figure."""
+    """The selector should map the LLM's JSON selected list to SelectedFigure objects."""
     figs = [
         Figure(figure_number=1, caption="taxonomy", image_path="figures/figure_1.png"),
         Figure(figure_number=2, caption="plots", image_path="figures/figure_2.png"),
@@ -98,19 +103,20 @@ def test_figure_selector_parses_llm_choice(tmp_path):
             return self.usage
 
         def chat_vision(self, system, user_text, images):
-            return 'Here is my choice: {"figure_number": 1, "reason": "overview"}'
+            return '{"selected": [{"figure_number": 1, "section": "method", "reason": "overview"}], "none_reason": ""}'
 
     agent = FigureSelectorAgent(FakeLLM(), _minimal_config())  # type: ignore[arg-type]
     result = agent.run(figures=figs, base_dir=tmp_path)
 
     assert result.success
-    chosen = result.data["selected_figure"]
-    assert chosen is not None
-    assert chosen.figure_number == 1
+    selected = result.data["selected_figures"]
+    assert len(selected) == 1
+    assert selected[0].figure.figure_number == 1
+    assert selected[0].section == "method"
 
 
-def test_figure_selector_llm_failure_falls_back(tmp_path):
-    """If the LLM call raises, we fall back to the lowest-numbered figure."""
+def test_figure_selector_llm_failure_returns_empty(tmp_path):
+    """If the LLM call raises, the selector returns an empty selection (no forced fallback)."""
     figs = [
         Figure(figure_number=2, caption="b", image_path="figures/figure_2.png"),
         Figure(figure_number=5, caption="e", image_path="figures/figure_5.png"),
@@ -134,7 +140,8 @@ def test_figure_selector_llm_failure_falls_back(tmp_path):
     result = agent.run(figures=figs, base_dir=tmp_path)
 
     assert result.success
-    assert result.data["selected_figure"].figure_number == 2  # lowest-numbered
+    assert result.data["selected_figures"] == []
+    assert "LLM call failed" in (result.data.get("none_reason") or "")
 
 
 # --- helpers ---

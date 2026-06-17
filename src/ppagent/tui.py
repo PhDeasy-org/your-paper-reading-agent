@@ -16,7 +16,7 @@ from rich.text import Text
 
 import typer
 
-from ppagent.config import AppConfig, load_config, PROJECT_ROOT, _DEFAULT_CONFIG_PATHS
+from ppagent.config import AppConfig, load_config, PROJECT_ROOT, _DEFAULT_CONFIG_PATHS, _LLM_ROLES
 from ppagent.cli import config_init
 
 console = Console()
@@ -41,21 +41,21 @@ class MenuItem:
 
 
 VENDORS = [
-    {"key": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1"},
-    {"key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com"},
-    {"key": "mistral", "name": "Mistral", "base_url": "https://api.mistral.ai/v1"},
-    {"key": "gemini", "name": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
-    {"key": "anthropic", "name": "Anthropic", "base_url": "https://api.anthropic.com/v1"},
-    {"key": "qwen", "name": "Qwen (Alibaba)", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-    {"key": "kimi", "name": "Kimi (Moonshot)", "base_url": "https://api.moonshot.ai/v1"},
-    {"key": "glm", "name": "GLM (Zhipu)", "base_url": "https://open.bigmodel.cn/api/paas/v4"},
-    {"key": "grok", "name": "Grok (xAI)", "base_url": "https://api.x.ai/v1"},
-    {"key": "stepfun", "name": "StepFun", "base_url": "https://api.stepfun.ai/v1"},
-    {"key": "minimax", "name": "MiniMax", "base_url": "https://api.minimax.io/v1"},
-    {"key": "mimo", "name": "MiMo (Xiaomi)", "base_url": "https://api.xiaomimimo.com/v1"},
-    {"key": "doubao", "name": "Doubao (ByteDance)", "base_url": "https://ark.cn-beijing.volces.com/api/v3"},
-    {"key": "tencent", "name": "Tencent Hunyuan", "base_url": "https://api.hunyuan.cloud.tencent.com"},
-    {"key": "custom", "name": "Custom OpenAI Compatible", "base_url": None},
+    {"key": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o"},
+    {"key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com", "default_model": "deepseek-chat"},
+    {"key": "mistral", "name": "Mistral", "base_url": "https://api.mistral.ai/v1", "default_model": "mistral-large-latest"},
+    {"key": "gemini", "name": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "default_model": "gemini-2.0-flash"},
+    {"key": "anthropic", "name": "Anthropic", "base_url": "https://api.anthropic.com/v1", "default_model": "claude-3-5-sonnet-latest"},
+    {"key": "qwen", "name": "Qwen (Alibaba)", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "default_model": "qwen-plus"},
+    {"key": "kimi", "name": "Kimi (Moonshot)", "base_url": "https://api.moonshot.ai/v1", "default_model": "moonshot-v1-8k"},
+    {"key": "glm", "name": "GLM (Zhipu)", "base_url": "https://open.bigmodel.cn/api/paas/v4", "default_model": "glm-4-plus"},
+    {"key": "grok", "name": "Grok (xAI)", "base_url": "https://api.x.ai/v1", "default_model": "grok-2-latest"},
+    {"key": "stepfun", "name": "StepFun", "base_url": "https://api.stepfun.ai/v1", "default_model": "step-1-8k"},
+    {"key": "minimax", "name": "MiniMax", "base_url": "https://api.minimax.io/v1", "default_model": "abab6.5-chat"},
+    {"key": "mimo", "name": "MiMo (Xiaomi)", "base_url": "https://api.xiaomimimo.com/v1", "default_model": "mimo-v1"},
+    {"key": "doubao", "name": "Doubao (ByteDance)", "base_url": "https://ark.cn-beijing.volces.com/api/v3", "default_model": "doubao-pro-32k"},
+    {"key": "tencent", "name": "Tencent Hunyuan", "base_url": "https://api.hunyuan.cloud.tencent.com", "default_model": "hunyuan-pro"},
+    {"key": "custom", "name": "Custom OpenAI Compatible", "base_url": None, "default_model": ""},
 ]
 
 
@@ -92,6 +92,63 @@ def detect_vendor(base_url: str | None) -> str:
     if "hunyuan" in base or "tencent" in base:
         return "tencent"
     return "custom"
+
+
+def _vendor_default_model(vendor_key: str) -> str:
+    """Return the default model name for a vendor key (empty for custom)."""
+    for v in VENDORS:
+        if v["key"] == vendor_key:
+            return v.get("default_model") or ""
+    return ""
+
+
+def _snapshot_active_vendor(cfg: AppConfig, role: str) -> str:
+    """Persist the role's current live LLMConfig under its detected vendor key.
+
+    Returns the vendor key the active config was saved under. This lets the user
+    switch to a different provider and later switch back without losing the
+    previously entered api_key/model/etc.
+    """
+    from ppagent.config import LLMConfig
+    import copy
+    active: LLMConfig = getattr(cfg.llms, role)
+    vendor_key = detect_vendor(active.base_url)
+    cfg.llms.saved_vendors.setdefault(role, {})[vendor_key] = copy.deepcopy(active)
+    return vendor_key
+
+
+def _switch_vendor(cfg: AppConfig, role: str, vendor_key: str) -> None:
+    """Make ``vendor_key`` the active provider for ``role``.
+
+    - Snapshot the currently-active config first (so its edits are preserved).
+    - If the requested vendor is already the active one, do nothing (re-entering
+      the same provider's settings page must not wipe anything).
+    - Otherwise, load that vendor's saved config if one exists; if not, seed a
+      fresh LLMConfig with the vendor's ``base_url``/``default_model`` and blank
+      credentials so the user only fills in the fields that matter.
+    """
+    from ppagent.config import LLMConfig
+    import copy
+    active = getattr(cfg.llms, role)
+    active_vendor = detect_vendor(active.base_url)
+    if active_vendor == vendor_key:
+        return  # already active — no-op to avoid clobbering in-progress edits
+
+    # Preserve what's currently in the live slot.
+    cfg.llms.saved_vendors.setdefault(role, {})[active_vendor] = copy.deepcopy(active)
+
+    saved = cfg.llms.saved_vendors.get(role, {}).get(vendor_key)
+    if saved is not None:
+        new_cfg = copy.deepcopy(saved)
+    else:
+        # First time visiting this vendor: fresh defaults, blank creds.
+        base = next((v["base_url"] for v in VENDORS if v["key"] == vendor_key), None)
+        new_cfg = LLMConfig(
+            base_url=base or "",
+            api_key="",
+            model=_vendor_default_model(vendor_key) or active.model,
+        )
+    setattr(cfg.llms, role, new_cfg)
 
 
 def _llm_submenu_items(role: str, vendor_key: str) -> list[MenuItem]:
@@ -316,7 +373,7 @@ def make_ui(menu_id: str, selected_idx: int, cfg: AppConfig) -> Panel:
     content = Group(
         Panel(body_content, border_style="cyan", title="Navigation Menu"),
         Panel(
-            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: [↑/↓] Navigate  [Enter] Select/Toggle  [←] Back  [q] Save & Quit  [x] Discard & Quit[/dim]",
+            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: \\[↑/↓] Navigate  \\[Enter] Select/Toggle  \\[←] Back  \\[q] Save & Quit  \\[x] Discard & Quit[/dim]",
             border_style="dim blue",
             title="Help & Controls"
         )
@@ -408,8 +465,15 @@ def edit_setting(name: str, current_value: Any, val_type: type) -> Any:
 
 
 def save_config(cfg: AppConfig, path: Path) -> None:
-    """Save the current configuration back to settings.toml."""
+    """Save the current configuration back to settings.toml.
+
+    Before dumping, snapshot each role's currently-active LLMConfig into
+    ``saved_vendors`` so the most recent edits are preserved for next time the
+    user re-enters that provider's page.
+    """
     import tomli_w
+    for role in _LLM_ROLES:
+        _snapshot_active_vendor(cfg, role)
     data = cfg.model_dump()
     data.pop("root", None)
     
@@ -471,15 +535,13 @@ def run_config_tui() -> None:
                         if len(menu_stack) > 1:
                             menu_stack.pop()
                     else:
-                        # Set default base URL if selecting a specific vendor
+                        # Entering a vendor's settings page: make that vendor
+                        # active for the role, snapshotting/restore so each
+                        # provider keeps its own api_key/model across switches.
                         match = re.match(r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", item.target)
                         if match:
                             role, vendor_key = match.groups()
-                            if vendor_key != "custom":
-                                for v in VENDORS:
-                                    if v["key"] == vendor_key:
-                                        set_config_value(cfg, f"llms.{role}.base_url", v["base_url"])
-                                        break
+                            _switch_vendor(cfg, role, vendor_key)
                         menu_stack.append((item.target, 0))
                 elif item.key:
                     if item.val_type is bool:

@@ -58,11 +58,19 @@ class LLMsConfig(BaseModel):
     - ``text``: agents that reason over paper text (writer, finder, criticizer).
     - ``vision``: the figure_selector agent, which sends images to the LLM.
     - ``searcher``: the paper-scoring/relevance agent (discovery phase).
+
+    ``saved_vendors`` stores the last-edited LLMConfig for each
+    ``(role, vendor_key)`` pair so the user can switch providers in the TUI
+    without losing previously entered keys/models. The live role field
+    (``text`` / ``vision`` / ``searcher``) is the *currently active* provider;
+    the pipeline only ever reads from the live field, so it requires no
+    changes. ``saved_vendors`` is keyed as ``{role: {vendor_key: <LLMConfig>}}``.
     """
 
     text: LLMConfig = Field(default_factory=LLMConfig)
     vision: LLMConfig = Field(default_factory=_vision_default)
     searcher: LLMConfig = Field(default_factory=LLMConfig)
+    saved_vendors: dict[str, dict[str, LLMConfig]] = Field(default_factory=dict)
 
     def for_role(self, role: str) -> LLMConfig:
         """Return the LLMConfig for a given role name."""
