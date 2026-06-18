@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
 from ppagent.config import AppConfig
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult
+
+if TYPE_CHECKING:
+    from ppagent.agents.tools import AgentTool
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +67,21 @@ class AgentBase(ABC):
 
 
 class AgentWithTools(AgentBase):
-    """Agent that can use tools via LLM function calling."""
+    """Agent that can use tools via LLM function calling.
+
+    Subclasses may populate:
+
+    * ``self.tools`` — bare :class:`ToolDef` objects whose handlers are
+      implemented as ``_tool_<name>`` methods on the subclass.
+    * ``self.agent_tools`` — :class:`~ppagent.agents.tools.AgentTool` objects
+      from the shared :mod:`ppagent.agents.tools` catalogue.  Their handlers
+      are bound automatically; no ``_tool_<name>`` method is needed.
+    """
 
     def __init__(self, llm: LLMClient, config: AppConfig) -> None:
         super().__init__(llm, config)
         self.tools: list[ToolDef] = []
+        self.agent_tools: list[AgentTool] = []
 
     def _run_with_tools(
         self,
@@ -76,14 +89,28 @@ class AgentWithTools(AgentBase):
         *,
         max_iterations: int = 5,
     ) -> str:
-        """Agentic loop: call LLM → if tool_calls, execute → feed back → repeat."""
+        """Agentic loop: call LLM → if tool_calls, execute → feed back → repeat.
+
+        Shared :class:`~ppagent.agents.tools.AgentTool` entries listed in
+        ``self.agent_tools`` are bound and merged with ``self.tools`` before
+        the loop starts.
+        """
+        # Bind shared AgentTool handlers onto self before building tool_map
+        for at in self.agent_tools:
+            at.bind(self)
+
+        all_tool_defs: list[ToolDef] = [
+            *self.tools,
+            *(at.definition for at in self.agent_tools),
+        ]
+
         tool_map: dict[str, Any] = {}
-        for t in self.tools:
+        for t in all_tool_defs:
             handler = getattr(self, f"_tool_{t.name}", None)
             if handler:
                 tool_map[t.name] = handler
 
-        tool_defs = [t.to_openai_tool() for t in self.tools]
+        tool_defs = [t.to_openai_tool() for t in all_tool_defs]
 
         for iteration in range(max_iterations):
             resp = self.llm.chat(messages, tools=tool_defs if tool_defs else None)

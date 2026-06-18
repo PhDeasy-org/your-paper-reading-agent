@@ -27,7 +27,7 @@ from the PDF. Everything is assembled into a clean Markdown + HTML report.
 **macOS (one-liner):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PhDeasy-org/your-paper-reading-agent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AutoPhd-org/your-paper-reading-agent/main/install.sh | bash
 ```
 
 **Manual** (requires [Python 3.12+](https://www.python.org/) and [uv](https://docs.astral.sh/uv/)):

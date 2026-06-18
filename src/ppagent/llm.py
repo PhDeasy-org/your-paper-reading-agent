@@ -14,6 +14,11 @@ import openai
 from pydantic import BaseModel
 
 from ppagent.config import LLMConfig
+from ppagent.providers import (
+    detect_provider,
+    is_reasoning_model,
+    thinking_extra_body_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,17 +66,10 @@ class LLMClient:
         local_usage["completion_tokens"] += completion
         local_usage["total_tokens"] += total
 
-    _REASONING_MODEL_HINTS = (
-        "deepseek", "reasoner", "r1", "qwq", "qwq-plus",
-        "magistral", "grok-4", "step-3", "mimo-v2",
-        "glm-5", "glm-4.7", "doubao-seed",
-    )
-
     def _resolve_instructor_mode(self) -> Any:
         mode_str = self.config.instructor_mode.lower()
         if mode_str == "auto":
-            model_lower = self.config.model.lower()
-            if any(hint in model_lower for hint in self._REASONING_MODEL_HINTS):
+            if is_reasoning_model(self.config.model):
                 logger.info("Auto-detected reasoning model '%s': using MD_JSON mode", self.config.model)
                 return instructor.Mode.MD_JSON
             return instructor.Mode.TOOLS
@@ -87,72 +85,24 @@ class LLMClient:
             return instructor.Mode.TOOLS
         return mapping[mode_str]
 
-    _PROVIDER_PATTERNS = (
-        ("openai.com", "openai"),
-        ("deepseek.com", "deepseek"),
-        ("anthropic.com", "anthropic"),
-        ("dashscope", "qwen"),
-        ("aliyuncs.com", "qwen"),
-        ("moonshot.cn", "kimi"),
-        ("kimi.ai", "kimi"),
-        ("googleapis.com", "gemini"),
-        ("x.ai", "grok"),
-        ("stepfun", "stepfun"),
-        ("minimax", "minimax"),
-        ("xiaomimimo.com", "mimo"),
-        ("volces.com", "doubao"),
-        ("volcengine.com", "doubao"),
-        ("bigmodel.cn", "glm"),
-        ("z.ai", "glm"),
-        ("mistral.ai", "mistral"),
-        ("tencent.com", "tencent-hy"),
-        ("hunyuan", "tencent-hy"),
-    )
-
-    def _detect_provider(self) -> str | None:
-        base = self.config.base_url.lower()
-        for pattern, provider in self._PROVIDER_PATTERNS:
-            if pattern in base:
-                return provider
-        return None
-
     def _thinking_kwargs(self) -> dict[str, Any]:
         """Return extra API kwargs to enable extended thinking/reasoning.
 
-        Detects the provider from ``base_url`` and passes the exact parameters
-        documented by each vendor so the model uses its default thinking budget.
+        The per-provider ``extra_body`` payload is sourced from the central
+        provider registry (see :mod:`ppagent.providers`). When thinking is
+        enabled but the active provider has no known thinking parameter, an
+        info note is logged and an empty dict is returned.
         """
         if not self.config.enable_thinking:
             return {}
-        provider = self._detect_provider()
-        if provider == "openai":
-            return {"extra_body": {"reasoning_effort": "medium"}}
-        if provider == "deepseek":
-            return {"extra_body": {"thinking": {"type": "enabled"}}}
-        if provider == "anthropic":
-            return {"extra_body": {"thinking": {"type": "enabled"}}}
-        if provider == "qwen":
-            return {"extra_body": {"enable_thinking": True}}
-        if provider == "kimi":
-            return {"extra_body": {"thinking": {"type": "enabled"}}}
-        if provider == "gemini":
-            return {"extra_body": {"reasoning_effort": "medium"}}
-        if provider == "grok":
-            return {"extra_body": {"reasoning_effort": "medium"}}
-        if provider == "stepfun":
-            return {"extra_body": {"reasoning_effort": "medium"}}
-        if provider == "minimax":
-            return {"extra_body": {"thinking": {"type": "enabled"}}}
-        if provider == "mimo":
-            return {"extra_body": {"thinking": {"type": "enabled"}}}
-        if provider == "doubao":
-            return {"extra_body": {"thinking": {"type": "enabled"}}}
-        if provider == "glm":
-            return {"extra_body": {"thinking": {"type": "enabled"}}}
-        if provider == "mistral":
-            return {"extra_body": {"reasoning_effort": "high"}}
-        logger.warning("enable_thinking is set but provider for '%s' is not recognized; no thinking params sent", self.config.base_url)
-        return {}
+        extra_body = thinking_extra_body_for(self.config.base_url)
+        if extra_body is None:
+            logger.info(
+                "enable_thinking is set but provider for '%s' has no known thinking parameter; none sent",
+                self.config.base_url,
+            )
+            return {}
+        return {"extra_body": extra_body}
 
     def _clamp_max_tokens(self, max_tokens: int | None) -> int:
         val = max_tokens or self.config.max_tokens
@@ -237,13 +187,98 @@ class LLMClient:
         resp = self.chat(messages)
         return resp.choices[0].message.content or ""
 
+    def _describe_config(self) -> str:
+        """Return a short human-readable description of the current LLM config."""
+        masked_key = (self.config.api_key[:8] + "...") if len(self.config.api_key) > 8 else "<not set>"
+        provider = detect_provider(self.config.base_url)
+        return (
+            f"model={self.config.model!r}, base_url={self.config.base_url!r}, "
+            f"provider={provider!r}, api_key={masked_key}"
+        )
+
+    @staticmethod
+    def _friendly_error(exc: Exception, config_desc: str) -> str:
+        """Build an actionable error message from an OpenAI SDK exception."""
+        if isinstance(exc, openai.AuthenticationError):
+            return (
+                f"Authentication failed (HTTP 401). The API key is invalid or expired.\n"
+                f"  Config: {config_desc}\n"
+                f"  → Regenerate your API key at the provider's console and update config/settings.toml."
+            )
+        if isinstance(exc, openai.PermissionDeniedError):
+            return (
+                f"Permission denied (HTTP 403). The API key lacks access to this resource.\n"
+                f"  Config: {config_desc}\n"
+                f"  → Check that your account/plan supports model {exc.body.get('model', '')!r} "
+                f"or request access from the provider."
+            )
+        if isinstance(exc, openai.NotFoundError):
+            return (
+                f"Model not found (HTTP 404). The model name may be incorrect or unavailable.\n"
+                f"  Config: {config_desc}\n"
+                f"  → Verify the model name in config/settings.toml against the provider's "
+                f"available models list."
+            )
+        if isinstance(exc, openai.BadRequestError):
+            detail = ""
+            body = getattr(exc, "body", None)
+            if isinstance(body, dict):
+                err = body.get("error", {})
+                detail = err.get("message", "") if isinstance(err, dict) else str(err)
+            return (
+                f"Bad request (HTTP 400). The API rejected the request.\n"
+                f"  Config: {config_desc}\n"
+                f"  → Provider detail: {detail or exc.message}\n"
+                f"  → Common causes: unsupported parameters, invalid model name, "
+                f"or thinking/reasoning params not supported by this model."
+            )
+        if isinstance(exc, openai.RateLimitError):
+            return (
+                f"Rate limit exceeded (HTTP 429).\n"
+                f"  Config: {config_desc}\n"
+                f"  → Wait a moment and retry, or reduce request frequency. "
+                f"Check your plan's rate limits at the provider's console."
+            )
+        if isinstance(exc, openai.APIConnectionError):
+            return (
+                f"Could not connect to the LLM API endpoint.\n"
+                f"  Config: {config_desc}\n"
+                f"  → Check your internet connection and that the base_url is reachable."
+            )
+        if isinstance(exc, openai.InternalServerError):
+            return (
+                f"Provider server error (HTTP 5xx).\n"
+                f"  Config: {config_desc}\n"
+                f"  → The provider is experiencing issues. Retry after a short wait."
+            )
+        # Fallback
+        return f"LLM API error: {exc}\n  Config: {config_desc}"
+
+    # Error types that should NOT be retried — they require user action.
+    _NON_RETRYABLE = (
+        openai.AuthenticationError,
+        openai.PermissionDeniedError,
+        openai.NotFoundError,
+        openai.BadRequestError,
+    )
+
     def _call_with_retry(self, kwargs: dict[str, Any]) -> openai.types.chat.ChatCompletion:
-        """Call the OpenAI API with exponential backoff on transient errors."""
+        """Call the OpenAI API with exponential backoff on transient errors.
+
+        Non-transient errors (401, 403, 404, 400) are raised immediately with
+        an actionable message so the user knows exactly what to fix.
+        """
+        config_desc = self._describe_config()
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
                 resp = self._client.chat.completions.create(**kwargs)
                 return resp
+            except self._NON_RETRYABLE as exc:
+                # Auth, permission, not-found, bad-request: do not retry.
+                msg = self._friendly_error(exc, config_desc)
+                logger.error(msg)
+                raise RuntimeError(msg) from exc
             except (
                 openai.APIConnectionError,
                 openai.RateLimitError,
@@ -254,7 +289,10 @@ class LLMClient:
                 logger.warning("LLM API error (attempt %d/%d): %s — retrying in %ds",
                                attempt + 1, _MAX_RETRIES, exc, wait)
                 time.sleep(wait)
-        raise RuntimeError(f"LLM API call failed after {_MAX_RETRIES} retries: {last_err}")
+        # All retries exhausted on a transient error.
+        msg = self._friendly_error(last_err, config_desc) if last_err else "LLM API call failed"
+        logger.error(msg)
+        raise RuntimeError(f"{msg}\n  (failed after {_MAX_RETRIES} retries)") from last_err
 
     @staticmethod
     def build_messages(

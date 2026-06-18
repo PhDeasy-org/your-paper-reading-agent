@@ -18,6 +18,7 @@ import typer
 
 from ppagent.config import AppConfig, load_config, PROJECT_ROOT, _DEFAULT_CONFIG_PATHS, _LLM_ROLES
 from ppagent.cli import config_init
+from ppagent.providers import PROVIDERS, detect_provider, get_provider
 
 console = Console()
 
@@ -40,66 +41,10 @@ class MenuItem:
         self.description = description
 
 
-VENDORS = [
-    {"key": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o"},
-    {"key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com", "default_model": "deepseek-chat"},
-    {"key": "mistral", "name": "Mistral", "base_url": "https://api.mistral.ai/v1", "default_model": "mistral-large-latest"},
-    {"key": "gemini", "name": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "default_model": "gemini-2.0-flash"},
-    {"key": "anthropic", "name": "Anthropic", "base_url": "https://api.anthropic.com/v1", "default_model": "claude-3-5-sonnet-latest"},
-    {"key": "qwen", "name": "Qwen (Alibaba)", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "default_model": "qwen-plus"},
-    {"key": "kimi", "name": "Kimi (Moonshot)", "base_url": "https://api.moonshot.ai/v1", "default_model": "moonshot-v1-8k"},
-    {"key": "glm", "name": "GLM (Zhipu)", "base_url": "https://open.bigmodel.cn/api/paas/v4", "default_model": "glm-4-plus"},
-    {"key": "grok", "name": "Grok (xAI)", "base_url": "https://api.x.ai/v1", "default_model": "grok-2-latest"},
-    {"key": "stepfun", "name": "StepFun", "base_url": "https://api.stepfun.ai/v1", "default_model": "step-1-8k"},
-    {"key": "minimax", "name": "MiniMax", "base_url": "https://api.minimax.io/v1", "default_model": "abab6.5-chat"},
-    {"key": "mimo", "name": "MiMo (Xiaomi)", "base_url": "https://api.xiaomimimo.com/v1", "default_model": "mimo-v1"},
-    {"key": "doubao", "name": "Doubao (ByteDance)", "base_url": "https://ark.cn-beijing.volces.com/api/v3", "default_model": "doubao-pro-32k"},
-    {"key": "tencent", "name": "Tencent Hunyuan", "base_url": "https://api.hunyuan.cloud.tencent.com", "default_model": "hunyuan-pro"},
-    {"key": "custom", "name": "Custom OpenAI Compatible", "base_url": None, "default_model": ""},
-]
-
-
-def detect_vendor(base_url: str | None) -> str:
-    if not base_url:
-        return "custom"
-    base = base_url.lower()
-    if "openai.com" in base:
-        return "openai"
-    if "deepseek.com" in base or "deepseek" in base:
-        return "deepseek"
-    if "mistral.ai" in base:
-        return "mistral"
-    if "googleapis.com" in base or "google" in base:
-        return "gemini"
-    if "anthropic.com" in base:
-        return "anthropic"
-    if "dashscope" in base or "aliyuncs.com" in base:
-        return "qwen"
-    if "moonshot.cn" in base or "kimi.ai" in base or "moonshot.ai" in base:
-        return "kimi"
-    if "bigmodel.cn" in base or "z.ai" in base:
-        return "glm"
-    if "x.ai" in base:
-        return "grok"
-    if "stepfun" in base:
-        return "stepfun"
-    if "minimax" in base:
-        return "minimax"
-    if "xiaomimimo.com" in base or "mimo" in base:
-        return "mimo"
-    if "volces.com" in base or "volcengine.com" in base:
-        return "doubao"
-    if "hunyuan" in base or "tencent" in base:
-        return "tencent"
-    return "custom"
-
-
 def _vendor_default_model(vendor_key: str) -> str:
     """Return the default model name for a vendor key (empty for custom)."""
-    for v in VENDORS:
-        if v["key"] == vendor_key:
-            return v.get("default_model") or ""
-    return ""
+    spec = get_provider(vendor_key)
+    return spec.default_model if spec else ""
 
 
 def _snapshot_active_vendor(cfg: AppConfig, role: str) -> str:
@@ -112,7 +57,7 @@ def _snapshot_active_vendor(cfg: AppConfig, role: str) -> str:
     from ppagent.config import LLMConfig
     import copy
     active: LLMConfig = getattr(cfg.llms, role)
-    vendor_key = detect_vendor(active.base_url)
+    vendor_key = detect_provider(active.base_url)
     cfg.llms.saved_vendors.setdefault(role, {})[vendor_key] = copy.deepcopy(active)
     return vendor_key
 
@@ -130,7 +75,7 @@ def _switch_vendor(cfg: AppConfig, role: str, vendor_key: str) -> None:
     from ppagent.config import LLMConfig
     import copy
     active = getattr(cfg.llms, role)
-    active_vendor = detect_vendor(active.base_url)
+    active_vendor = detect_provider(active.base_url)
     if active_vendor == vendor_key:
         return  # already active — no-op to avoid clobbering in-progress edits
 
@@ -142,7 +87,8 @@ def _switch_vendor(cfg: AppConfig, role: str, vendor_key: str) -> None:
         new_cfg = copy.deepcopy(saved)
     else:
         # First time visiting this vendor: fresh defaults, blank creds.
-        base = next((v["base_url"] for v in VENDORS if v["key"] == vendor_key), None)
+        spec = get_provider(vendor_key)
+        base = spec.base_url if spec else None
         new_cfg = LLMConfig(
             base_url=base or "",
             api_key="",
@@ -258,21 +204,21 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
         }[role]
 
         current_base_url = get_config_value(cfg, f"llms.{role}.base_url")
-        active_vendor = detect_vendor(current_base_url)
+        active_vendor = detect_provider(current_base_url)
 
         items = [
-            MenuItem(f"<- Back to LLM Roles", target="back"),
+            MenuItem("<- Back to LLM Roles", target="back"),
         ]
-        for v in VENDORS:
-            is_active = (v["key"] == active_vendor)
-            label = v["name"]
+        for spec in PROVIDERS:
+            is_active = (spec.key == active_vendor)
+            label = spec.name
             if is_active:
                 label = f"{label} [bold green](Active)[/bold green]"
             items.append(
                 MenuItem(
                     label=label,
-                    target=f"llm_{role}_{v['key']}",
-                    description=f"Configure {v['name']} settings for {role_label}."
+                    target=f"llm_{role}_{spec.key}",
+                    description=f"Configure {spec.name} settings for {role_label}."
                 )
             )
         return items

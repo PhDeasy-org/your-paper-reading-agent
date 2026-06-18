@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import logging
 
 from ppagent.agents import register_agent
-from ppagent.agents.base import AgentWithTools, ToolDef
+from ppagent.agents.base import AgentWithTools
 from ppagent.agents.prompts import (
     FINDER_SYSTEM_PROMPT,
     FINDER_STRUCTURED_SYSTEM_PROMPT,
     FINDER_USER_PROMPT_TEMPLATE,
     FINDER_STRUCTURED_USER_PROMPT_TEMPLATE,
 )
+from ppagent.agents.tools import HF_TOOLS
 from ppagent.llm import LLMClient
-from ppagent import hf
 from ppagent.models import AgentResult, FinderOutput, PaperContent, Paper
 
 logger = logging.getLogger(__name__)
@@ -29,76 +28,7 @@ class FinderAgent(AgentWithTools):
 
     def __init__(self, llm: LLMClient, config) -> None:
         super().__init__(llm, config)
-        self.tools = [
-            ToolDef(
-                name="search_papers",
-                description="Search for papers on HuggingFace by query string. Returns a list of papers with IDs, titles, and upvotes.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Search query (e.g., method name, topic, benchmark name).",
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Max number of results (default 5).",
-                            "default": 5,
-                        },
-                    },
-                    "required": ["query"],
-                },
-            ),
-            ToolDef(
-                name="paper_info",
-                description="Get detailed info about a specific paper by its arXiv ID.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "paper_id": {
-                            "type": "string",
-                            "description": "The arXiv paper ID (e.g., '2301.08210').",
-                        },
-                    },
-                    "required": ["paper_id"],
-                },
-            ),
-        ]
-
-    def _tool_search_papers(self, query: str, limit: int = 5) -> str:
-        try:
-            papers = hf.search_papers(query, limit=limit)
-            if not papers:
-                return "No papers found."
-            results = []
-            for p in papers:
-                results.append(
-                    {
-                        "id": p.id,
-                        "title": p.title,
-                        "upvotes": p.upvotes,
-                        "summary": p.summary[:200] if p.summary else "",
-                    }
-                )
-            return json.dumps(results, indent=2)
-        except Exception as exc:
-            return f"Search failed: {exc}"
-
-    def _tool_paper_info(self, paper_id: str) -> str:
-        try:
-            paper = hf.paper_info(paper_id)
-            return json.dumps(
-                {
-                    "id": paper.id,
-                    "title": paper.title,
-                    "authors": paper.authors,
-                    "upvotes": paper.upvotes,
-                    "summary": paper.summary[:500] if paper.summary else "",
-                },
-                indent=2,
-            )
-        except Exception as exc:
-            return f"Paper info failed: {exc}"
+        self.agent_tools = list(HF_TOOLS)
 
     def run(self, *, content: PaperContent) -> AgentResult:
         self.llm.reset_usage()
