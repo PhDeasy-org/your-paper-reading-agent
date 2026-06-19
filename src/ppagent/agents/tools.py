@@ -50,7 +50,17 @@ class AgentTool:
 
     def bind(self, agent: Any) -> None:
         """Install ``handler`` as ``_tool_<name>`` on *agent*."""
-        setattr(agent, f"_tool_{self.name}", self.handler)
+        import inspect
+
+        sig = inspect.signature(self.handler)
+        if "agent" in sig.parameters:
+
+            def wrapped(*args: Any, **kwargs: Any) -> str:
+                return self.handler(*args, agent=agent, **kwargs)
+
+            setattr(agent, f"_tool_{self.name}", wrapped)
+        else:
+            setattr(agent, f"_tool_{self.name}", self.handler)
 
 
 # ---------------------------------------------------------------------------
@@ -189,20 +199,44 @@ HF_READ_PAPER = AgentTool(
 HF_TOOLS: list[AgentTool] = [HF_SEARCH_PAPERS, HF_PAPER_INFO, HF_READ_PAPER]
 
 
-def _web_search(query: str) -> str:
-    """Search the web in real-time using xAI's Grok model with native web search.
+def _web_search(query: str, agent: Any | None = None) -> str:
+    """Search the web in real-time using native web search on the active provider.
 
     Use this to search the internet for related papers, blog posts, code,
     benchmarks, or other general web information.
     """
-    api_key = os.environ.get("XAI_API_KEY")
+    if agent is not None and hasattr(agent, "llm") and hasattr(agent.llm, "config"):
+        llm_config = agent.llm.config
+        base_url = llm_config.base_url
+        api_key = llm_config.api_key
+        model = llm_config.model
+    else:
+        base_url = "https://api.x.ai/v1"
+        api_key = os.environ.get("XAI_API_KEY", "")
+        model = "grok-4.3"
+
+    # Resolve api_key from standard environment variable overrides if not set in config
     if not api_key:
-        return "Error: XAI_API_KEY environment variable is not set."
+        from ppagent.providers import detect_provider
+
+        provider = detect_provider(base_url)
+        env_keys = {
+            "openai": "OPENAI_API_KEY",
+            "grok": "XAI_API_KEY",
+            "qwen": "DASHSCOPE_API_KEY",
+            "doubao": "ARK_API_KEY",
+        }
+        env_var = env_keys.get(provider)
+        if env_var:
+            api_key = os.environ.get(env_var, "")
+
+    if not api_key:
+        return "Error: API key for the active provider is not set."
 
     try:
-        client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
+        client = OpenAI(base_url=base_url, api_key=api_key)
         response = client.responses.create(
-            model="grok-4.3",
+            model=model,
             input=[
                 {"role": "user", "content": query},
             ],
