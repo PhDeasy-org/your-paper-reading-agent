@@ -12,7 +12,7 @@ from ppagent.agents.prompts import (
     FINDER_USER_PROMPT_TEMPLATE,
     FINDER_STRUCTURED_USER_PROMPT_TEMPLATE,
 )
-from ppagent.agents.tools import HF_TOOLS
+from ppagent.agents.tools import HF_PAPER_INFO, HF_READ_PAPER, XAI_WEB_SEARCH
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, FinderOutput, PaperContent, Paper
 
@@ -28,7 +28,7 @@ class FinderAgent(AgentWithTools):
 
     def __init__(self, llm: LLMClient, config) -> None:
         super().__init__(llm, config)
-        self.agent_tools = list(HF_TOOLS)
+        self.agent_tools = [XAI_WEB_SEARCH, HF_PAPER_INFO, HF_READ_PAPER]
 
     def run(self, *, content: PaperContent) -> AgentResult:
         self.llm.reset_usage()

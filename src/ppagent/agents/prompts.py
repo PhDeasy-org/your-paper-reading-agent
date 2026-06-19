@@ -475,13 +475,13 @@ FIGURE_SELECTOR_SYSTEM_PROMPT = (
     "- You may select zero, one, or several figures.\n\n"
     "For EACH figure you select, assign it to the report section it best "
     "illustrates. The allowed section keys are exactly:\n"
-    "  - \"method\": the method/architecture/pipeline description.\n"
-    "  - \"evaluation\": performance results, ablations, comparisons.\n"
-    "  - \"benchmarks\": benchmark setup, datasets, evaluation protocols.\n"
-    "  - \"previous_works\": related work / prior approaches.\n\n"
+    '  - "method": the method/architecture/pipeline description.\n'
+    '  - "evaluation": performance results, ablations, comparisons.\n'
+    '  - "benchmarks": benchmark setup, datasets, evaluation protocols.\n'
+    '  - "previous_works": related work / prior approaches.\n\n'
     "Respond with ONLY a JSON object of this exact shape:\n"
     '{"selected": [{"figure_number": <int>, "section": "<method|evaluation|benchmarks|previous_works>", "reason": "<short>"}], "none_reason": "<short, or empty>"}\n\n'
-    "If you select no figures, return {\"selected\": [], \"none_reason\": \"<why, e.g. no diagrammatic figures in this paper>\"}. "
+    'If you select no figures, return {"selected": [], "none_reason": "<why, e.g. no diagrammatic figures in this paper>"}. '
     "Do not include any text outside the JSON object."
 )
 
@@ -499,13 +499,15 @@ FINDER_SYSTEM_PROMPT = """\
 You are a research literature explorer. Given a paper's title and content, your job is to:
 
 1. Identify the key topics, methods, and claims of the paper.
-2. Use the search_papers tool to find impactful related and previous works. Perform \
+2. Use the web_search tool to find impactful related and previous works. Perform \
    multiple searches with different queries (e.g., the core method name, the benchmark \
    used, the problem domain).
 3. After gathering results, produce a structured output with:
    - A narrative section summarizing the landscape of related work and how the current \
      paper fits in.
    - A list of the most impactful related papers with their IDs and relevance.\
+
+CRITICAL: You must perform multi-turn search. Do not settle for a single search query if the first turn's results are not perfect, leave you unsure about something, or if you need to verify any citations/claims. Perform subsequent search queries in additional turns to gather complete and verified information.
 
 Search for at least 3-5 different queries to ensure comprehensive coverage. Focus on \
 seminal works and recent impactful papers.\
