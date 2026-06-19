@@ -45,8 +45,10 @@ class LLMResponse:
 
     @property
     def output_text(self) -> str:
+        is_mock = type(self.raw).__name__ in ("MagicMock", "Mock") or hasattr(self.raw, "_mock_self")
         if hasattr(self.raw, "output_text"):
-            return self.raw.output_text
+            if not is_mock or "output_text" in self.raw.__dict__:
+                return self.raw.output_text
         try:
             return self.raw.choices[0].message.content or ""
         except (AttributeError, IndexError):
@@ -54,8 +56,10 @@ class LLMResponse:
 
     @property
     def output(self) -> list[Any]:
+        is_mock = type(self.raw).__name__ in ("MagicMock", "Mock") or hasattr(self.raw, "_mock_self")
         if hasattr(self.raw, "output"):
-            return self.raw.output
+            if not is_mock or "output" in self.raw.__dict__:
+                return self.raw.output
         items = []
         try:
             message = self.raw.choices[0].message

@@ -125,12 +125,12 @@ class AgentWithTools(AgentBase):
                 # Serialize Pydantic output items to dicts
                 for item in resp.output:
                     if isinstance(item, BaseModel):
-                        messages.append(item.model_dump())
+                        messages.append(item.model_dump(exclude_none=True))
                     elif hasattr(item, "model_dump") and type(item).__name__ not in (
                         "MagicMock",
                         "Mock",
                     ):
-                        messages.append(item.model_dump())
+                        messages.append(item.model_dump(exclude_none=True))
                     else:
                         messages.append(item)
 
