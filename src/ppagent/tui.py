@@ -21,9 +21,9 @@ from ppagent.config import (
     load_config,
     PROJECT_ROOT,
     _DEFAULT_CONFIG_PATHS,
+    _BACKUP_CONFIG_PATH,
     _LLM_ROLES,
 )
-from ppagent.cli import config_init
 from ppagent.providers import PROVIDERS, detect_provider, get_provider
 
 console = Console()
@@ -562,7 +562,7 @@ def make_ui(menu_id: str, selected_idx: int, cfg: AppConfig) -> Panel:
     content = Group(
         Panel(body_content, border_style="cyan", title="Navigation Menu"),
         Panel(
-            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: \\[↑/↓] Navigate  \\[Enter] Select/Toggle  \\[←] Back  \\[q] Save & Quit  \\[x] Discard & Quit[/dim]",
+            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: \\[↑/↓] Navigate  \\[Enter] Navigate/Toggle  \\[Space] Select  \\[←] Back  \\[q] Save & Quit  \\[x] Discard & Quit[/dim]",
             border_style="dim blue",
             title="Help & Controls",
         ),
@@ -580,6 +580,8 @@ def get_key() -> str:
         char = sys.stdin.read(1)
         if char == "\n":
             return "enter"
+        if char == " ":
+            return "space"
         return char
 
     import tty
@@ -612,6 +614,8 @@ def get_key() -> str:
                         elif b3 == b"D":
                             return "left"
             return "esc"
+        elif b == b" ":
+            return "space"
         elif b in (b"\r", b"\n"):
             return "enter"
         elif b in (b"\x7f", b"\x08"):
@@ -657,6 +661,9 @@ def save_config(cfg: AppConfig, path: Path) -> None:
     Before dumping, snapshot each role's currently-active LLMConfig into
     ``saved_vendors`` so the most recent edits are preserved for next time the
     user re-enters that provider's page.
+
+    A persistent backup is also written to ``~/.config/ppagent/settings.toml``
+    so the user's settings survive project-directory reinstalls.
     """
     import tomli_w
 
@@ -669,21 +676,46 @@ def save_config(cfg: AppConfig, path: Path) -> None:
     with open(path, "wb") as f:
         tomli_w.dump(data, f)
 
+    # Persistent backup — survives project directory reinstalls.
+    try:
+        _BACKUP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_BACKUP_CONFIG_PATH, "wb") as fb:
+            tomli_w.dump(data, fb)
+    except OSError:
+        pass  # non-fatal: backup failure must not block a save
+
 
 def run_config_tui() -> None:
     """Run the interactive TUI configuration loop."""
-    config_file = get_config_path()
-    if not config_file.exists():
-        console.print(
-            "[yellow]Configuration file settings.toml not found. Initializing default config...[/yellow]"
-        )
-        config_init()
+    # Always prefer the persistent backup when available — it represents
+    # the user's last TUI save and survives project-directory reinstalls.
+    # The project-level settings.toml can be created with stale OpenAI defaults
+    # by `config_init`, or get corrupted when the user accidentally visits the
+    # "Custom OpenAI Compatible" vendor page and saves.  Loading from the
+    # backup avoids both scenarios.
+    if _BACKUP_CONFIG_PATH.exists():
+        cfg = load_config(_BACKUP_CONFIG_PATH)
+    else:
+        try:
+            cfg = load_config()
+        except Exception as e:
+            console.print(f"[red]Error loading configuration:[/red] {e}")
+            raise typer.Exit(1)
 
-    try:
-        cfg = load_config()
-    except Exception as e:
-        console.print(f"[red]Error loading configuration:[/red] {e}")
-        raise typer.Exit(1)
+    # Keep the project-level file in sync so `ppagent run` / `ppagent search`
+    # (which call load_config() without the backup preference) see the same
+    # settings the TUI displays.  Write raw data only — do NOT call
+    # save_config() here: it mutates saved_vendors via _snapshot_active_vendor
+    # and overwrites the backup, which is the source of truth.
+    import tomli_w
+
+    project_config = PROJECT_ROOT / "config" / "settings.toml"
+    _data = cfg.model_dump()
+    _data.pop("root", None)
+    project_config.parent.mkdir(parents=True, exist_ok=True)
+    with open(project_config, "wb") as _f:
+        tomli_w.dump(_data, _f)
+    config_file = project_config
 
     # Navigation stack stores tuples of (menu_id, selected_idx)
     menu_stack: list[tuple[str, int]] = [("main", 0)]
@@ -722,23 +754,30 @@ def run_config_tui() -> None:
                 live.stop()
                 console.print("[yellow]Changes discarded.[/yellow]")
                 return
-            elif key == "enter":
+            elif key in ("enter", "space"):
                 item = menu_def[selected_idx]
                 if item.target:
                     if item.target == "back":
                         if len(menu_stack) > 1:
                             menu_stack.pop()
                     else:
-                        # Entering a vendor's settings page: make that vendor
-                        # active for the role, snapshotting/restore so each
-                        # provider keeps its own api_key/model across switches.
+                        # Detect vendor setting item (e.g. llm_text_openai),
+                        # but NOT vendor *list* items (e.g. llm_text_vendor).
                         match = re.match(
-                            r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", item.target
+                            r"^llm_(text|vision|searcher)_(?!vendor$)([a-z0-9_]+)$",
+                            item.target,
                         )
                         if match:
                             role, vendor_key = match.groups()
-                            _switch_vendor(cfg, role, vendor_key)
-                        menu_stack.append((item.target, 0))
+                            if key == "space":
+                                # Space = select this vendor (switch but stay on list)
+                                _switch_vendor(cfg, role, vendor_key)
+                            else:
+                                # Enter = navigate into the vendor's settings submenu
+                                _switch_vendor(cfg, role, vendor_key)
+                                menu_stack.append((item.target, 0))
+                        else:
+                            menu_stack.append((item.target, 0))
                 elif item.key:
                     if item.val_type is bool:
                         toggle_config_value(cfg, item.key)

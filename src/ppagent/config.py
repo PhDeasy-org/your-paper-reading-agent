@@ -20,6 +20,11 @@ _DEFAULT_CONFIG_PATHS = [
     Path.home() / ".config" / "ppagent" / "settings.toml",
 ]
 
+# Persistent backup location — survives project directory reinstalls.
+# save_config() writes a copy here on every TUI save; load_config() falls back
+# to this file when no project-level settings.toml exists.
+_BACKUP_CONFIG_PATH = Path.home() / ".config" / "ppagent" / "settings.toml"
+
 
 class LLMConfig(BaseModel):
     """LLM API configuration."""
@@ -40,7 +45,7 @@ class LLMConfig(BaseModel):
 AGENT_LLM_ROLE: dict[str, str] = {
     "classifier": "text",
     "writer": "text",
-    "finder": "text",
+    "finder": "searcher",
     "criticizer": "text",
     "figure_selector": "vision",
     "searcher": "searcher",
@@ -82,24 +87,24 @@ class LLMsConfig(BaseModel):
 class SearchConfig(BaseModel):
     """Paper search/discovery configuration."""
 
-    default_date: str = "today"
-    default_limit: int = 50
-    sort: str = "trending"
-    profile_path: str = "config/profile.md"
-    relevance_threshold: float = 0.6
-    max_reports_per_run: int = 5
+    default_date: str = Field(default="today", description="The default date to fetch papers for (e.g., 'today', 'yesterday').")
+    default_limit: int = Field(default=50, description="The default number of papers to fetch and evaluate.")
+    sort: str = Field(default="trending", description="How to sort the fetched papers (e.g., 'trending', 'recent').")
+    profile_path: str = Field(default="config/profile.md", description="Path to the Markdown file containing the user's interests profile.")
+    relevance_threshold: float = Field(default=0.6, description="Minimum score (0.0 to 1.0) required for a paper to be considered relevant.")
+    max_reports_per_run: int = Field(default=5, description="Maximum number of reports to generate in a single run.")
 
 
 class ReportConfig(BaseModel):
     """Report generation configuration."""
 
-    output_dir: str = "output"
-    template_dir: str = "templates"
-    formats: list[str] = Field(default_factory=lambda: ["md", "html"])
-    download_pdf: bool = True
-    pdf_cache_dir: str = ".cache/pdfs"
-    custom_agents: list[str] = Field(default_factory=list)
-    language: str = "English"
+    output_dir: str = Field(default="output", description="Directory where generated reports will be saved.")
+    template_dir: str = Field(default="templates", description="Directory containing Jinja2 templates for reports.")
+    formats: list[str] = Field(default_factory=lambda: ["md", "html"], description="List of formats to output (e.g., 'md', 'html').")
+    download_pdf: bool = Field(default=True, description="Whether to download the paper's PDF for figure extraction.")
+    pdf_cache_dir: str = Field(default=".cache/pdfs", description="Directory to cache downloaded PDFs.")
+    custom_agents: list[str] = Field(default_factory=list, description="List of custom agent modules to load.")
+    language: str = Field(default="English", description="The language to generate the report in.")
     writer_research: bool = Field(
         default=True,
         description=(
@@ -108,15 +113,23 @@ class ReportConfig(BaseModel):
             "benchmarks to produce a more thorough and accurate report."
         ),
     )
+    stream: bool = Field(
+        default=False,
+        description=(
+            "Stream the Writer/Finder research-phase prose to the terminal as it "
+            "is generated. When enabled, Phase 4 runs the two agents sequentially "
+            "and prints their text deltas live instead of showing a spinner."
+        ),
+    )
 
 
 class SchedulerConfig(BaseModel):
     """Auto-fetch scheduler configuration."""
 
-    enabled: bool = False
-    cron_hour: int = 8
-    cron_minute: int = 0
-    timezone: str = "Asia/Shanghai"
+    enabled: bool = Field(default=False, description="Whether the auto-fetch scheduler is enabled.")
+    cron_hour: int = Field(default=8, description="The hour of the day (0-23) to run the scheduler.")
+    cron_minute: int = Field(default=0, description="The minute of the hour (0-59) to run the scheduler.")
+    timezone: str = Field(default="Asia/Shanghai", description="The timezone to use for the scheduler.")
 
 
 class WechatPublishConfig(BaseModel):

@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ppagent import __version__
-from ppagent.config import AppConfig, load_config, PROJECT_ROOT
+from ppagent.config import AppConfig, load_config, PROJECT_ROOT, _BACKUP_CONFIG_PATH
 from ppagent.storage import Storage
 
 app = typer.Typer(
@@ -104,7 +104,16 @@ def search(
         None, "--profile", "-p", help="Path to profile .md file."
     ),
 ) -> None:
-    """Discover and rank papers based on your research profile."""
+    """Discover and rank papers based on your research profile.
+
+    Fetches the latest papers from HuggingFace and uses the Searcher LLM
+    to score them against the interests defined in your profile.md.
+
+    Options:
+    - --date: Specific date to fetch (e.g. '2023-10-01'). Defaults to config.
+    - --limit: Max number of papers to fetch for scoring.
+    - --profile: Override the profile.md path for scoring.
+    """
     from ppagent import hf
     from ppagent.llm import LLMClient
     from ppagent.agents.searcher import SearcherAgent
@@ -192,14 +201,33 @@ def report(
         "--open/--no-open",
         help="Open the report in the default browser after generation.",
     ),
+    stream: bool = typer.Option(
+        False,
+        "--stream",
+        help="Stream the Writer/Finder research phase to the terminal as it is generated.",
+    ),
 ) -> None:
-    """Generate detailed reports for specified papers."""
+    """Generate detailed multi-agent reports for specified papers.
+
+    Runs the full analysis pipeline (classification, writing, finding related works,
+    critique, and figure extraction) for one or more papers.
+
+    Arguments:
+    - paper_ids: One or more arXiv IDs or URLs to process.
+
+    Options:
+    - --output, -o: Override the output directory for generated reports.
+    - --force, -f: Regenerate the report even if it already exists, without asking.
+    - --open/--no-open: Open the resulting HTML report in the browser (default: True).
+    - --stream: Stream the Writer/Finder research-phase prose to the terminal live.
+    """
     from ppagent import hf
     from ppagent.pipeline import PaperPipeline
 
     cfg = _load()
     if output_dir:
         cfg.report.output_dir = output_dir
+    cfg.report.stream = stream
 
     pipeline = PaperPipeline(cfg)
     has_errors = False
@@ -273,13 +301,31 @@ def run(
         "--open/--no-open",
         help="Open the report in the default browser after generation.",
     ),
+    stream: bool = typer.Option(
+        False,
+        "--stream",
+        help="Stream the Writer/Finder research phase to the terminal as it is generated.",
+    ),
 ) -> None:
-    """Run the full pipeline: search + report generation."""
+    """Execute the full paper discovery and report generation pipeline.
+
+    This command runs `search` to find relevant papers based on your profile,
+    and then automatically runs `report` on the top matching papers.
+
+    Options:
+    - --date, -d: Specific date to fetch papers for.
+    - --limit, -n: Max papers to evaluate from the source.
+    - --schedule, -s: Run continuously using the configured cron schedule.
+    - --force, -f: Overwrite existing reports without prompting.
+    - --open/--no-open: Open generated reports in the browser.
+    - --stream: Stream the Writer/Finder research-phase prose to the terminal live.
+    """
     if schedule:
         from ppagent.scheduler import PaperScheduler
         from ppagent.pipeline import PaperPipeline
 
         cfg = _load()
+        cfg.report.stream = stream
         pipeline = PaperPipeline(cfg)
         scheduler = PaperScheduler(cfg, pipeline)
         console.print("[bold]Starting scheduler...[/bold]")
@@ -296,6 +342,7 @@ def run(
     from ppagent.pipeline import PaperPipeline
 
     cfg = _load()
+    cfg.report.stream = stream
     console.print("[bold]Running full pipeline...[/bold]")
 
     pipeline = PaperPipeline(cfg)
@@ -357,7 +404,13 @@ def config_show() -> None:
 
 @config_app.command("init")
 def config_init() -> None:
-    """Create a default settings.toml if it doesn't exist."""
+    """Create a default settings.toml if it doesn't exist.
+
+    If a persistent backup exists at ``~/.config/ppagent/settings.toml`` (left
+    over from a previous installation), it is restored instead of generating
+    fresh OpenAI defaults — so the user's provider settings survive reinstalls.
+    """
+    import shutil
     import tomli_w
 
     target = PROJECT_ROOT / "config" / "settings.toml"
@@ -365,6 +418,15 @@ def config_init() -> None:
 
     if target.exists():
         console.print(f"[yellow]Config already exists:[/yellow] {target}")
+        return
+
+    # Restore from persistent backup if available (survives reinstalls).
+    if _BACKUP_CONFIG_PATH.exists():
+        _BACKUP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_BACKUP_CONFIG_PATH, target)
+        console.print(
+            f"[green]Restored config from backup:[/green] {_BACKUP_CONFIG_PATH}"
+        )
         return
 
     # Per-role LLM defaults: text (writer/finder/criticizer), vision

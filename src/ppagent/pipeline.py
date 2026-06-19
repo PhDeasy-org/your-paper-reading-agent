@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from rich.console import Console
 
@@ -40,7 +42,7 @@ class PaperPipeline:
         self.classifier = ClassifierAgent(self._clients["text"], config)
         self.searcher = SearcherAgent(self._clients["searcher"], config)
         self.writer = WriterAgent(self._clients["text"], config)
-        self.finder = FinderAgent(self._clients["text"], config)
+        self.finder = FinderAgent(self._clients["searcher"], config)
         self.criticizer = CriticizerAgent(self._clients["text"], config)
         self.figure_selector = FigureSelectorAgent(self._clients["vision"], config)
         self.storage = Storage(config.output_dir)
@@ -64,7 +66,15 @@ class PaperPipeline:
         date: str | None = None,
         limit: int | None = None,
     ) -> list[Paper]:
-        """Fetch daily papers and filter by user profile."""
+        """Fetch papers from HuggingFace and score them against the user's profile.
+
+        Args:
+            date: The date to fetch papers for (e.g., 'today', '2023-10-01'). Defaults to config.
+            limit: The maximum number of papers to fetch from HuggingFace. Defaults to config.
+
+        Returns:
+            A list of Paper objects sorted by relevance score, up to the maximum configured limit.
+        """
         self.console.print("[bold]Searching papers matching user profile...[/bold]")
         with self.console.status(
             "[dim]Fetching papers from HuggingFace...[/dim]", spinner="dots"
@@ -98,8 +108,59 @@ class PaperPipeline:
         self.console.print(f"Found [green]{len(matched)}[/green] matched papers.")
         return matched[: self.config.search.max_reports_per_run]
 
+    def _run_agent_streaming(
+        self,
+        label: str,
+        run_fn: Callable[..., Any],
+        **kwargs: Any,
+    ) -> AgentResult:
+        """Run a tool-capable agent with its research phase streamed to stdout.
+
+        Prints a labeled header, streams text deltas as they arrive (each delta
+        printed inline, soft-wrapped), and finishes with a trailing newline and
+        a success/failure marker. The agent's structured-output phase is silent
+        — only the prose it generates via tool-calling is streamed.
+        """
+        self.console.print(f"[bold cyan]{label}[/bold cyan] ", end="")
+        collected: list[str] = []
+
+        def _on_text(delta: str) -> None:
+            collected.append(delta)
+            self.console.print(delta, end="", soft_wrap=True, highlight=False)
+
+        try:
+            result = run_fn(on_text=_on_text, **kwargs)
+        except Exception as exc:
+            self.console.print()  # newline after streamed/partial output
+            self.console.print(f"  [red]✗[/red] {label} agent failed: {exc}")
+            return AgentResult(agent_name="", success=False, error=str(exc))
+
+        if collected:
+            self.console.print()  # newline after streamed prose
+        if result.success:
+            self.console.print(f"  [green]✓[/green] {label} agent completed successfully.")
+        else:
+            self.console.print(f"  [red]✗[/red] {label} agent failed: {result.error}")
+        return result
+
     def report(self, paper_id: str) -> PaperReport:
-        """Generate a full report for a single paper."""
+        """Generate a comprehensive report for a single paper.
+
+        This method orchestrates a multi-agent workflow:
+        1. Fetch metadata and full text.
+        2. Classify the paper type.
+        3. Run Writer and Finder agents (in parallel by default, or
+           sequentially with live streaming when ``config.report.stream``).
+        4. Run Criticizer agent on the Writer's output to find weaknesses.
+        5. Extract and select figures using the Vision LLM.
+        6. Assemble the final report.
+
+        Args:
+            paper_id: The arXiv ID or HuggingFace paper ID to process.
+
+        Returns:
+            A populated PaperReport object containing the generated sections.
+        """
         self.console.print("\n[bold cyan]🚀 Starting Report Generation[/bold cyan]")
         self.console.print(f"[bold]Paper ID:[/bold] {paper_id}")
         self.console.print("[bold]LLM configuration in use:[/bold]")
@@ -210,51 +271,69 @@ class PaperPipeline:
                     f"  [yellow]⚠[/yellow] Classification failed ({classifier_result.error}); defaulting to 'method'"
                 )
 
-        # Run writer and finder in parallel
+        # Run writer and finder
         self.console.print(
-            "[bold yellow]🔄 Phase 4/8: Running Writer and Finder agents in parallel...[/bold yellow]"
+            "[bold yellow]🔄 Phase 4/8: Running Writer and Finder agents...[/bold yellow]"
         )
         writer_result: AgentResult | None = None
         finder_result: AgentResult | None = None
 
-        with self.console.status(
-            "[dim]Running Writer and Finder agents concurrently...[/dim]",
-            spinner="dots",
-        ):
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                self.console.print(
-                    f"  Running Writer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
-                )
-                writer_future = executor.submit(
-                    self.writer.run, content=paper_content, paper_type=paper_type
-                )
-                self.console.print(
-                    f"  Running Finder agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
-                )
-                finder_future = executor.submit(self.finder.run, content=paper_content)
+        if self.config.report.stream:
+            # Streaming: run the two agents sequentially so their text deltas
+            # don't interleave. Each agent's research/narrative phase streams
+            # under a labeled header; the final structured phase stays quiet.
+            writer_result = self._run_agent_streaming(
+                "📝 Writer",
+                self.writer.run,
+                content=paper_content,
+                paper_type=paper_type,
+            )
+            finder_result = self._run_agent_streaming(
+                "🔍 Finder",
+                self.finder.run,
+                content=paper_content,
+            )
+        else:
+            with self.console.status(
+                "[dim]Running Writer and Finder agents concurrently...[/dim]",
+                spinner="dots",
+            ):
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    self.console.print(
+                        f"  Running Writer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+                    )
+                    writer_future = executor.submit(
+                        self.writer.run, content=paper_content, paper_type=paper_type
+                    )
+                    self.console.print(
+                        f"  Running Finder agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+                    )
+                    finder_future = executor.submit(
+                        self.finder.run, content=paper_content
+                    )
 
-                for future in as_completed([writer_future, finder_future]):
-                    result = future.result()
-                    if result.agent_name == "writer":
-                        writer_result = result
-                        if result.success:
-                            self.console.print(
-                                "  [green]✓[/green] Writer agent completed successfully."
-                            )
-                        else:
-                            self.console.print(
-                                f"  [red]✗[/red] Writer agent failed: {result.error}"
-                            )
-                    elif result.agent_name == "finder":
-                        finder_result = result
-                        if result.success:
-                            self.console.print(
-                                "  [green]✓[/green] Finder agent completed successfully."
-                            )
-                        else:
-                            self.console.print(
-                                f"  [red]✗[/red] Finder agent failed: {result.error}"
-                            )
+                    for future in as_completed([writer_future, finder_future]):
+                        result = future.result()
+                        if result.agent_name == "writer":
+                            writer_result = result
+                            if result.success:
+                                self.console.print(
+                                    "  [green]✓[/green] Writer agent completed successfully."
+                                )
+                            else:
+                                self.console.print(
+                                    f"  [red]✗[/red] Writer agent failed: {result.error}"
+                                )
+                        elif result.agent_name == "finder":
+                            finder_result = result
+                            if result.success:
+                                self.console.print(
+                                    "  [green]✓[/green] Finder agent completed successfully."
+                                )
+                            else:
+                                self.console.print(
+                                    f"  [red]✗[/red] Finder agent failed: {result.error}"
+                                )
 
         # Ensure results exist
         if writer_result is None:
@@ -419,7 +498,19 @@ class PaperPipeline:
         limit: int | None = None,
         prompt_replace: bool = True,
     ) -> list[PaperReport]:
-        """Full pipeline: search + report generation."""
+        """Execute the full pipeline: discover relevant papers and generate reports for them.
+
+        This combines `search()` and `report()`. It will skip papers that already have
+        reports generated unless `prompt_replace` is True and the user confirms.
+
+        Args:
+            date: The date to fetch papers for.
+            limit: The maximum number of papers to evaluate.
+            prompt_replace: If True, prompt the user via CLI before regenerating an existing report.
+
+        Returns:
+            A list of PaperReport objects that were successfully generated.
+        """
         papers = self.search(date=date, limit=limit)
         if not papers:
             logger.info("No papers to process.")

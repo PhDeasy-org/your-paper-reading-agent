@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentWithTools
@@ -30,7 +31,12 @@ class FinderAgent(AgentWithTools):
         super().__init__(llm, config)
         self.agent_tools = [XAI_WEB_SEARCH, HF_PAPER_INFO, HF_READ_PAPER]
 
-    def run(self, *, content: PaperContent) -> AgentResult:
+    def run(
+        self,
+        *,
+        content: PaperContent,
+        on_text: Callable[[str], None] | None = None,
+    ) -> AgentResult:
         self.llm.reset_usage()
         user_prompt = FINDER_USER_PROMPT_TEMPLATE.format(
             title=content.paper.title,
@@ -48,7 +54,7 @@ class FinderAgent(AgentWithTools):
             )
 
         try:
-            narrative = self._run_with_tools(messages)
+            narrative = self._run_with_tools(messages, on_text=on_text)
         except Exception as exc:
             logger.error("Finder agent failed: %s", exc)
             return AgentResult(

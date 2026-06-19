@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -27,6 +28,7 @@ class ToolDef(BaseModel):
     parameters: dict[str, Any]  # JSON schema
 
     def to_openai_tool(self) -> dict[str, Any]:
+        """Chat Completions API tool format (nested under ``function``)."""
         return {
             "type": "function",
             "function": {
@@ -34,6 +36,15 @@ class ToolDef(BaseModel):
                 "description": self.description,
                 "parameters": self.parameters,
             },
+        }
+
+    def to_responses_tool(self) -> dict[str, Any]:
+        """Responses API tool format (flat, no ``function`` wrapper)."""
+        return {
+            "type": "function",
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
         }
 
 
@@ -88,12 +99,17 @@ class AgentWithTools(AgentBase):
         messages: list[dict[str, Any]],
         *,
         max_iterations: int = 5,
+        on_text: Callable[[str], None] | None = None,
     ) -> str:
         """Agentic loop: call LLM → if tool_calls, execute → feed back → repeat.
 
         Shared :class:`~ppagent.agents.tools.AgentTool` entries listed in
         ``self.agent_tools`` are bound and merged with ``self.tools`` before
         the loop starts.
+
+        ``on_text``, when provided, streams text deltas to the callback for the
+        final no-tool turn (the prose the loop ultimately returns). Tool turns
+        are never streamed.
         """
         # Bind shared AgentTool handlers onto self before building tool_map
         for at in self.agent_tools:
@@ -110,10 +126,22 @@ class AgentWithTools(AgentBase):
             if handler:
                 tool_map[t.name] = handler
 
-        tool_defs = [t.to_openai_tool() for t in all_tool_defs]
+        if self.llm.use_responses:
+            tool_defs = [t.to_responses_tool() for t in all_tool_defs]
+        else:
+            tool_defs = [t.to_openai_tool() for t in all_tool_defs]
 
         for iteration in range(max_iterations):
-            resp = self.llm.chat(messages, tools=tool_defs if tool_defs else None)
+            # Pass tools through so the LLM can decide to call one. When tools
+            # are present, LLMClient.chat falls back to its non-streaming path
+            # automatically (so tool-call parsing stays unchanged). Only the
+            # final no-tool turn — when tool_defs is empty — actually streams.
+            resp = self.llm.chat(
+                messages,
+                tools=tool_defs if tool_defs else None,
+                stream=on_text is not None,
+                on_text=on_text,
+            )
 
             if self.llm.use_responses:
                 tool_calls = [

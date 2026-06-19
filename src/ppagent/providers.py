@@ -40,6 +40,7 @@ class ProviderSpec:
     url_patterns: tuple[str, ...] = field(default=())
     thinking_extra_body: dict[str, Any] | None = None
     supports_responses_api: bool = False
+    thinking_incompatible_with_tools: bool = False
 
 
 # Two shapes of "extended thinking" parameters seen across vendors.
@@ -98,6 +99,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="qwen-plus",
         url_patterns=("dashscope", "aliyuncs.com"),
         thinking_extra_body=_QWEN_THINKING,
+        thinking_incompatible_with_tools=True,
     ),
     # kimi_cn must precede kimi_ai: "moonshot.cn"/"kimi.ai" are checked before
     # the broader "moonshot.ai" pattern. The patterns do not actually overlap,
@@ -109,6 +111,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="moonshot-v1-8k",
         url_patterns=("moonshot.cn", "kimi.ai"),
         thinking_extra_body=_THINKING_ENABLED,
+        thinking_incompatible_with_tools=True,
     ),
     ProviderSpec(
         key="kimi_ai",
@@ -117,6 +120,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="moonshot-v1-8k",
         url_patterns=("moonshot.ai",),
         thinking_extra_body=_THINKING_ENABLED,
+        thinking_incompatible_with_tools=True,
     ),
     ProviderSpec(
         key="glm",
@@ -245,6 +249,16 @@ def is_reasoning_model(model: str) -> bool:
     """Heuristic: does ``model`` look like a reasoning/thinking model?"""
     model_lower = model.lower()
     return any(hint in model_lower for hint in REASONING_MODEL_HINTS)
+
+
+def thinking_incompatible_with_tools_for(base_url: str | None) -> bool:
+    """Return whether the provider's thinking mode is incompatible with tool_choice.
+
+    Some providers (e.g. Qwen, Kimi) reject ``tool_choice`` when thinking mode
+    is enabled. For these, structured output must use MD_JSON instead of TOOLS.
+    """
+    spec = get_provider(detect_provider(base_url))
+    return spec.thinking_incompatible_with_tools if spec else False
 
 
 def supports_responses_api_for(base_url: str | None) -> bool:

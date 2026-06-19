@@ -6,7 +6,8 @@ import base64
 import time
 import logging
 import threading
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from ppagent.providers import (
     is_reasoning_model,
     supports_responses_api_for,
     thinking_extra_body_for,
+    thinking_incompatible_with_tools_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,52 @@ class _CompatToolCall:
     name: str
     arguments: str
     type: str = "function_call"
+
+
+@dataclass
+class _StreamedMessage:
+    """Minimal assistant-message shape reconstructed from a streamed response."""
+
+    content: str | None = None
+    tool_calls: list[Any] | None = None
+
+
+@dataclass
+class _StreamedChoice:
+    """Minimal choice shape reconstructed from a streamed Chat Completion."""
+
+    message: _StreamedMessage = field(default_factory=_StreamedMessage)
+
+
+@dataclass
+class _StreamedRaw:
+    """Shim raw object that lets ``LLMResponse`` read a streamed completion.
+
+    A streamed call produces only text deltas (no tool calls — those turns are
+    routed through the non-streaming path). This object exposes the handful of
+    attributes the ``LLMResponse`` wrapper and ``_run_with_tools`` inspect:
+    ``output_text`` (Responses), ``choices[0].message`` (Chat Completions),
+    ``output`` (Responses tool list, always empty here), and ``usage``.
+    """
+
+    text: str = ""
+    usage: Any = None
+    choices: list[_StreamedChoice] = field(
+        default_factory=lambda: [_StreamedChoice()]
+    )
+
+    @property
+    def output_text(self) -> str:
+        return self.text
+
+    @property
+    def output(self) -> list[Any]:
+        # Tool turns never stream, so a streamed response carries no tool calls.
+        return []
+
+    def __post_init__(self) -> None:
+        # Keep the single choice's message content in sync with ``text``.
+        self.choices[0].message.content = self.text
 
 
 class LLMResponse:
@@ -88,6 +136,15 @@ class LLMClient:
 
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
+        if not config.api_key:
+            from ppagent.providers import detect_provider
+
+            vendor = detect_provider(config.base_url)
+            raise ValueError(
+                f"Missing API key for LLM provider '{vendor}' "
+                f"(base_url={config.base_url!r}). "
+                f"Run `ppagent config` and enter your API key."
+            )
         self._client = openai.OpenAI(
             base_url=config.base_url,
             api_key=config.api_key,
@@ -143,6 +200,18 @@ class LLMClient:
             if is_reasoning_model(self.config.model):
                 logger.info(
                     "Auto-detected reasoning model '%s': using MD_JSON mode",
+                    self.config.model,
+                )
+                return instructor.Mode.MD_JSON
+            # Providers whose thinking mode is incompatible with tool_choice
+            # (e.g. Qwen, Kimi) must fall back to MD_JSON when thinking is on.
+            if (
+                self.config.enable_thinking
+                and thinking_incompatible_with_tools_for(self.config.base_url)
+            ):
+                logger.info(
+                    "Thinking enabled on provider incompatible with tool_choice; "
+                    "using MD_JSON mode for '%s'",
                     self.config.model,
                 )
                 return instructor.Mode.MD_JSON
@@ -206,8 +275,18 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        stream: bool = False,
+        on_text: Callable[[str], None] | None = None,
     ) -> LLMResponse:
-        """Raw chat completion, optionally with tool definitions."""
+        """Raw chat completion, optionally with tool definitions.
+
+        When ``stream`` is True **and** no tools are requested, the response is
+        streamed token-by-token: each text delta is passed to ``on_text`` (if
+        provided) and a reconstructed :class:`LLMResponse` is returned once the
+        stream completes. Turns that include tools are never streamed — they
+        fall back to the normal blocking path so tool-call parsing stays
+        byte-for-byte identical.
+        """
         if self.use_responses:
             kwargs: dict[str, Any] = {
                 "model": self.config.model,
@@ -234,9 +313,129 @@ class LLMClient:
                 kwargs.pop("temperature", None)
         if tools:
             kwargs["tools"] = tools
-        resp = self._call_with_retry(kwargs)
-        self._record_usage(resp.usage)
-        return LLMResponse(resp)
+
+        # Streaming only applies to plain-text turns (no tools). Tool turns
+        # parse tool_calls from the full response, so they always use the
+        # blocking retry path.
+        if stream and on_text is not None and not tools:
+            raw = self._stream_create(kwargs, on_text)
+        else:
+            raw = self._call_with_retry(kwargs)
+        self._record_usage(getattr(raw, "usage", None))
+        return LLMResponse(raw)
+
+    def _stream_create(
+        self,
+        kwargs: dict[str, Any],
+        on_text: Callable[[str], None],
+    ) -> _StreamedRaw:
+        """Call the LLM with ``stream=True`` and return a reconstructed raw.
+
+        Connection / pre-stream errors (auth, rate-limit, 5xx, connect) are
+        handled with the same retry + friendly-error logic as the blocking
+        path. Once tokens start flowing, a stream error is surfaced as a
+        :class:`RuntimeError` — we never partially retry a mid-stream failure.
+        """
+        kwargs = {**kwargs, "stream": True}
+        if not self.use_responses:
+            # Ask the Chat Completions endpoint to emit a final usage chunk.
+            kwargs["stream_options"] = {"include_usage": True}
+
+        config_desc = self._describe_config()
+        last_err: Exception | None = None
+        stream: Iterator[Any] | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                if self.use_responses:
+                    stream = self._client.responses.create(**kwargs)
+                else:
+                    stream = self._client.chat.completions.create(**kwargs)
+                break
+            except self._NON_RETRYABLE as exc:
+                msg = self._friendly_error(exc, config_desc)
+                logger.error(msg)
+                raise RuntimeError(msg) from exc
+            except (
+                openai.APIConnectionError,
+                openai.RateLimitError,
+                openai.InternalServerError,
+            ) as exc:
+                last_err = exc
+                wait = _RETRY_BACKOFF * (2**attempt)
+                logger.warning(
+                    "LLM API error (attempt %d/%d): %s — retrying in %ds",
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    exc,
+                    wait,
+                )
+                time.sleep(wait)
+        if stream is None:
+            # All pre-stream retries exhausted.
+            msg = (
+                self._friendly_error(last_err, config_desc)
+                if last_err
+                else "LLM API call failed"
+            )
+            logger.error(msg)
+            raise RuntimeError(
+                f"{msg}\n  (failed after {_MAX_RETRIES} retries)"
+            ) from last_err
+
+        accumulated: list[str] = []
+        usage: Any = None
+        try:
+            for event in stream:
+                delta_text, event_usage = self._extract_stream_delta(event)
+                if delta_text:
+                    accumulated.append(delta_text)
+                    on_text(delta_text)
+                if event_usage is not None:
+                    usage = event_usage
+        except Exception as exc:
+            # Mid-stream failure: do not retry. Surface a clear error.
+            logger.error("Stream interrupted: %s", exc)
+            raise RuntimeError(
+                self._friendly_error(exc, config_desc)
+            ) from exc
+
+        full_text = "".join(accumulated)
+        return _StreamedRaw(text=full_text, usage=usage)
+
+    def _extract_stream_delta(self, event: Any) -> tuple[str, Any]:
+        """Return ``(text_delta, usage_or_none)`` for one stream event.
+
+        Handles both the Chat Completions streaming shape (``choices[0].delta``
+        plus a trailing usage chunk) and the Responses streaming shape
+        (``response.output_text.delta`` / ``response.completed``).
+        """
+        usage = getattr(event, "usage", None)
+
+        # Responses API streaming: text deltas arrive as
+        # ``ResponseOutputTextDeltaEvent`` with a ``.delta`` attribute, and the
+        # ``response.completed`` event carries final usage.
+        delta = getattr(event, "delta", None)
+        if isinstance(delta, str):
+            return delta, usage
+        # Some Responses events nest text under .text (ResponseTextDeltaEvent).
+        text_attr = getattr(event, "text", None)
+        if isinstance(text_attr, str):
+            return text_attr, usage
+
+        # Chat Completions streaming: choices[0].delta.content
+        try:
+            choices = event.choices
+        except AttributeError:
+            return "", usage
+        if not choices:
+            # Trailing usage-only chunk.
+            return "", usage
+        choice = choices[0]
+        message_delta = getattr(choice, "delta", None)
+        if message_delta is None:
+            return "", usage
+        content = getattr(message_delta, "content", None)
+        return (content or "", usage)
 
     def chat_structured(
         self,

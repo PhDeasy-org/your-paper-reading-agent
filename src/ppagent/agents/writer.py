@@ -10,6 +10,7 @@ so the final analysis is more accurate and thorough.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from ppagent.agents import register_agent
 from ppagent.agents.base import AgentWithTools
@@ -50,10 +51,16 @@ class WriterAgent(AgentWithTools):
     # Research phase                                                          #
     # --------------------------------------------------------------------- #
 
-    def _do_research(self, content: PaperContent) -> str:
+    def _do_research(
+        self,
+        content: PaperContent,
+        *,
+        on_text: Callable[[str], None] | None = None,
+    ) -> str:
         """Run the multi-turn tool-calling research loop.
 
-        Returns the research notes produced by the LLM.
+        Returns the research notes produced by the LLM. When ``on_text`` is
+        provided, the final no-tool turn's text deltas are streamed to it.
         """
         user_prompt = WRITER_RESEARCH_USER_PROMPT_TEMPLATE.format(
             title=content.paper.title,
@@ -76,7 +83,7 @@ class WriterAgent(AgentWithTools):
             )
 
         research_notes = self._run_with_tools(
-            messages, max_iterations=_MAX_RESEARCH_ITERATIONS
+            messages, max_iterations=_MAX_RESEARCH_ITERATIONS, on_text=on_text
         )
         return research_notes
 
@@ -85,7 +92,11 @@ class WriterAgent(AgentWithTools):
     # --------------------------------------------------------------------- #
 
     def run(
-        self, *, content: PaperContent, paper_type: str = DEFAULT_PAPER_TYPE
+        self,
+        *,
+        content: PaperContent,
+        paper_type: str = DEFAULT_PAPER_TYPE,
+        on_text: Callable[[str], None] | None = None,
     ) -> AgentResult:
         self.llm.reset_usage()
 
@@ -94,7 +105,7 @@ class WriterAgent(AgentWithTools):
         if self.config.report.writer_research:
             try:
                 logger.info("Writer: starting multi-turn research phase")
-                research_notes = self._do_research(content)
+                research_notes = self._do_research(content, on_text=on_text)
                 logger.info(
                     "Writer: research phase complete (%d chars of notes)",
                     len(research_notes),
