@@ -41,7 +41,9 @@ class ClassifierAgent(AgentBase):
         summary = content.paper.summary
         if not summary:
             # Fall back to first ~2000 chars of the full text
-            summary = content.markdown[:2000] if content.markdown else "No content available."
+            summary = (
+                content.markdown[:2000] if content.markdown else "No content available."
+            )
 
         user_prompt = CLASSIFIER_USER_PROMPT_TEMPLATE.format(
             title=content.paper.title,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import pytest
 
 from ppagent.agents.assembler import Assembler
 from ppagent.agents.prompts import (
@@ -11,7 +9,7 @@ from ppagent.agents.prompts import (
     WRITER_SYSTEM_PROMPTS,
     WRITER_SECTION_LABELS,
 )
-from ppagent.models import AgentResult, Paper
+from ppagent.models import AgentResult
 from ppagent.storage import Storage
 
 
@@ -20,9 +18,15 @@ def test_prompts_completeness():
     from ppagent.agents.prompts import CRITICIZER_SYSTEM_PROMPTS
 
     for paper_type in PAPER_TYPES:
-        assert paper_type in WRITER_SYSTEM_PROMPTS, f"Missing writer system prompt for {paper_type}"
-        assert paper_type in CRITICIZER_SYSTEM_PROMPTS, f"Missing criticizer system prompt for {paper_type}"
-        assert paper_type in WRITER_SECTION_LABELS, f"Missing section labels for {paper_type}"
+        assert paper_type in WRITER_SYSTEM_PROMPTS, (
+            f"Missing writer system prompt for {paper_type}"
+        )
+        assert paper_type in CRITICIZER_SYSTEM_PROMPTS, (
+            f"Missing criticizer system prompt for {paper_type}"
+        )
+        assert paper_type in WRITER_SECTION_LABELS, (
+            f"Missing section labels for {paper_type}"
+        )
 
         # Verify structure of section labels
         labels = WRITER_SECTION_LABELS[paper_type]
@@ -31,13 +35,17 @@ def test_prompts_completeness():
         assert "evaluation_heading" in labels
 
 
-def test_assembler_renders_all_paper_types(sample_paper, writer_data, finder_data, template_dir, tmp_path):
+def test_assembler_renders_all_paper_types(
+    sample_paper, writer_data, finder_data, template_dir, tmp_path
+):
     """Test that assembling a report with any of the paper types renders the correct dynamic headings in MD and HTML."""
     storage = Storage(tmp_path)
-    
+
     writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
     finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-    criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "Critique detail"})
+    criticizer_result = AgentResult(
+        agent_name="criticizer", success=True, data={"critique": "Critique detail"}
+    )
 
     for paper_type in PAPER_TYPES:
         assembler = Assembler(
@@ -67,12 +75,19 @@ def test_assembler_renders_all_paper_types(sample_paper, writer_data, finder_dat
         assert f"## {labels['evaluation_heading']}" in md_content
 
         # Verify HTML contains the correct headings
-        assert labels['benchmarks_heading'] in html_content
-        assert labels['method_heading'] in html_content
-        assert labels['evaluation_heading'] in html_content
+        assert labels["benchmarks_heading"] in html_content
+        assert labels["method_heading"] in html_content
+        assert labels["evaluation_heading"] in html_content
 
         # For non-default paper types, verify the paper type metadata is shown in the output
         if paper_type != "method":
             # Just verify paper_type is referenced in some form
-            assert paper_type in md_content.lower() or PAPER_TYPES[paper_type].split(" —")[0].lower() in md_content.lower()
-            assert paper_type in html_content.lower() or PAPER_TYPES[paper_type].split(" —")[0].lower() in html_content.lower()
+            assert (
+                paper_type in md_content.lower()
+                or PAPER_TYPES[paper_type].split(" —")[0].lower() in md_content.lower()
+            )
+            assert (
+                paper_type in html_content.lower()
+                or PAPER_TYPES[paper_type].split(" —")[0].lower()
+                in html_content.lower()
+            )

@@ -115,38 +115,85 @@ class AgentWithTools(AgentBase):
         for iteration in range(max_iterations):
             resp = self.llm.chat(messages, tools=tool_defs if tool_defs else None)
 
-            tool_calls = [item for item in resp.output if item.type == "function_call"]
-            if not tool_calls:
-                return resp.output_text
+            if self.llm.use_responses:
+                tool_calls = [
+                    item for item in resp.output if item.type == "function_call"
+                ]
+                if not tool_calls:
+                    return resp.output_text
 
-            messages.extend(resp.output)
+                # Serialize Pydantic output items to dicts
+                for item in resp.output:
+                    if isinstance(item, BaseModel):
+                        messages.append(item.model_dump())
+                    elif hasattr(item, "model_dump") and type(item).__name__ not in (
+                        "MagicMock",
+                        "Mock",
+                    ):
+                        messages.append(item.model_dump())
+                    else:
+                        messages.append(item)
 
-            for call in tool_calls:
-                fn_name = call.name
+                for call in tool_calls:
+                    fn_name = call.name
+                    try:
+                        fn_args = json.loads(call.arguments)
+                    except json.JSONDecodeError:
+                        fn_args = {}
+
+                    handler = tool_map.get(fn_name)
+                    if handler:
+                        result = handler(**fn_args)
+                    else:
+                        result = f"Error: unknown tool '{fn_name}'"
+
+                    messages.append(
+                        {
+                            "type": "function_call_output",
+                            "call_id": call.call_id,
+                            "output": str(result),
+                        }
+                    )
+                num_calls = len(tool_calls)
+            else:
                 try:
-                    fn_args = json.loads(call.arguments)
-                except json.JSONDecodeError:
-                    fn_args = {}
+                    choice = resp.raw.choices[0]
+                    message = choice.message
+                except (AttributeError, IndexError):
+                    return resp.output_text
 
-                handler = tool_map.get(fn_name)
-                if handler:
-                    result = handler(**fn_args)
-                else:
-                    result = f"Error: unknown tool '{fn_name}'"
+                if not message.tool_calls:
+                    return resp.output_text
 
-                messages.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call.call_id,
-                        "output": str(result),
-                    }
-                )
+                messages.append(message.model_dump())
+
+                for call in message.tool_calls:
+                    fn_name = call.function.name
+                    try:
+                        fn_args = json.loads(call.function.arguments)
+                    except json.JSONDecodeError:
+                        fn_args = {}
+
+                    handler = tool_map.get(fn_name)
+                    if handler:
+                        result = handler(**fn_args)
+                    else:
+                        result = f"Error: unknown tool '{fn_name}'"
+
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "content": str(result),
+                            "tool_call_id": call.id,
+                        }
+                    )
+                num_calls = len(message.tool_calls)
 
             logger.debug(
                 "Tool iteration %d/%d: called %d tools",
                 iteration + 1,
                 max_iterations,
-                len(tool_calls),
+                num_calls,
             )
 
         # If we exhausted iterations, return last content

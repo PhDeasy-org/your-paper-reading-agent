@@ -368,7 +368,9 @@ class Assembler:
 
         # Render templates
         md_content = self._render_md(report, w, f, selected_figures, section_labels)
-        html_content = self._render_html(report, w, f, md_content, selected_figures, section_labels)
+        html_content = self._render_html(
+            report, w, f, md_content, selected_figures, section_labels
+        )
 
         # Save to disk
         self.storage.save_report(
@@ -511,7 +513,11 @@ class Assembler:
                 template = self.env.get_template("report.md.jinja2")
                 return template.render(
                     **self._template_context(
-                        report, writer_data, finder_data, selected_figures, section_labels
+                        report,
+                        writer_data,
+                        finder_data,
+                        selected_figures,
+                        section_labels,
                     )
                 )
             except Exception as exc:
@@ -534,7 +540,11 @@ class Assembler:
                 template = self.env.get_template("report.html.jinja2")
                 return template.render(
                     **self._template_context(
-                        report, writer_data, finder_data, selected_figures, section_labels
+                        report,
+                        writer_data,
+                        finder_data,
+                        selected_figures,
+                        section_labels,
                     ),
                     markdown_content=md_content,
                 )

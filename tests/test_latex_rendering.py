@@ -74,7 +74,10 @@ class TestInlineMathPreservation:
     def test_inline_math_attention_formula(self):
         text = "The attention is $\\text{Attention}(Q,K,V) = \\text{softmax}(\\frac{QK^T}{\\sqrt{d_k}})V$."
         html = render_markdown_with_math(text)
-        assert "$\\text{Attention}(Q,K,V) = \\text{softmax}(\\frac{QK^T}{\\sqrt{d_k}})V$" in html
+        assert (
+            "$\\text{Attention}(Q,K,V) = \\text{softmax}(\\frac{QK^T}{\\sqrt{d_k}})V$"
+            in html
+        )
 
     def test_inline_math_paren_delimiters(self):
         text = "The variable \\(x\\) is important."
@@ -336,12 +339,16 @@ class TestMathJaxConfiguration:
 
     @pytest.fixture
     def html_template_content(self) -> str:
-        template_path = Path(__file__).resolve().parent.parent / "templates" / "report.html.jinja2"
+        template_path = (
+            Path(__file__).resolve().parent.parent / "templates" / "report.html.jinja2"
+        )
         return template_path.read_text()
 
     def test_mathjax_script_included(self, html_template_content: str):
         assert "mathjax" in html_template_content.lower()
-        assert "tex-chtml" in html_template_content or "tex-mml" in html_template_content
+        assert (
+            "tex-chtml" in html_template_content or "tex-mml" in html_template_content
+        )
 
     def test_inline_math_delimiters_dollar(self, html_template_content: str):
         assert "['$', '$']" in html_template_content
@@ -367,26 +374,38 @@ class TestMathJaxConfiguration:
 class TestFallbackMathJaxConfiguration:
     """The fallback HTML generator must also have correct MathJax config."""
 
-    def test_fallback_html_has_mathjax(self, sample_report: PaperReport, tmp_path: Path):
+    def test_fallback_html_has_mathjax(
+        self, sample_report: PaperReport, tmp_path: Path
+    ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=Path("/nonexistent"), storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=Path("/nonexistent"), storage=storage, model_used="test"
+        )
         md = assembler._fallback_md(sample_report)
         html = assembler._fallback_html(sample_report, md)
 
         assert "MathJax" in html
         assert "mathjax" in html.lower()
 
-    def test_fallback_html_has_inline_delimiters(self, sample_report: PaperReport, tmp_path: Path):
+    def test_fallback_html_has_inline_delimiters(
+        self, sample_report: PaperReport, tmp_path: Path
+    ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=Path("/nonexistent"), storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=Path("/nonexistent"), storage=storage, model_used="test"
+        )
         md = assembler._fallback_md(sample_report)
         html = assembler._fallback_html(sample_report, md)
 
         assert "['$', '$']" in html
 
-    def test_fallback_html_has_display_delimiters(self, sample_report: PaperReport, tmp_path: Path):
+    def test_fallback_html_has_display_delimiters(
+        self, sample_report: PaperReport, tmp_path: Path
+    ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=Path("/nonexistent"), storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=Path("/nonexistent"), storage=storage, model_used="test"
+        )
         md = assembler._fallback_md(sample_report)
         html = assembler._fallback_html(sample_report, md)
 
@@ -405,11 +424,15 @@ class TestAssemblerMarkdownRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, md_content, _ = assembler.assemble(
             paper=sample_report.paper,
@@ -426,11 +449,15 @@ class TestAssemblerMarkdownRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, md_content, _ = assembler.assemble(
             paper=sample_report.paper,
@@ -445,11 +472,15 @@ class TestAssemblerMarkdownRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, md_content, _ = assembler.assemble(
             paper=sample_report.paper,
@@ -470,11 +501,15 @@ class TestAssemblerHTMLRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, _, html_content = assembler.assemble(
             paper=sample_report.paper,
@@ -489,11 +524,15 @@ class TestAssemblerHTMLRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, _, html_content = assembler.assemble(
             paper=sample_report.paper,
@@ -509,11 +548,15 @@ class TestAssemblerHTMLRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, _, html_content = assembler.assemble(
             paper=sample_report.paper,
@@ -528,11 +571,15 @@ class TestAssemblerHTMLRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, _, html_content = assembler.assemble(
             paper=sample_report.paper,
@@ -548,11 +595,15 @@ class TestAssemblerHTMLRendering:
         self, sample_report, writer_data, finder_data, template_dir, tmp_path
     ):
         storage = Storage(tmp_path)
-        assembler = Assembler(template_dir=template_dir, storage=storage, model_used="test")
+        assembler = Assembler(
+            template_dir=template_dir, storage=storage, model_used="test"
+        )
 
         writer_result = AgentResult(agent_name="writer", success=True, data=writer_data)
         finder_result = AgentResult(agent_name="finder", success=True, data=finder_data)
-        criticizer_result = AgentResult(agent_name="criticizer", success=True, data={"critique": "OK"})
+        criticizer_result = AgentResult(
+            agent_name="criticizer", success=True, data={"critique": "OK"}
+        )
 
         _, _, html_content = assembler.assemble(
             paper=sample_report.paper,
@@ -627,8 +678,13 @@ class TestRegressionFromActualReports:
         """Iterative self-evolution mathematical notation."""
         text = "$\\mathcal{P}_t = \\text{GV}(\\mathcal{M}_{t-1},\\mathcal{D},T)$, $\\mathcal{M}_t = \\text{Finetune}(\\mathcal{M}_{t-1},\\mathcal{P}_t)$."
         html = render_markdown_with_math(text)
-        assert "$\\mathcal{P}_t = \\text{GV}(\\mathcal{M}_{t-1},\\mathcal{D},T)$" in html
-        assert "$\\mathcal{M}_t = \\text{Finetune}(\\mathcal{M}_{t-1},\\mathcal{P}_t)$" in html
+        assert (
+            "$\\mathcal{P}_t = \\text{GV}(\\mathcal{M}_{t-1},\\mathcal{D},T)$" in html
+        )
+        assert (
+            "$\\mathcal{M}_t = \\text{Finetune}(\\mathcal{M}_{t-1},\\mathcal{P}_t)$"
+            in html
+        )
 
     def test_performance_numbers_with_math(self):
         """Performance text mixing numbers and math notation."""

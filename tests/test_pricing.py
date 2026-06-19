@@ -7,7 +7,11 @@ from ppagent.storage import Storage
 
 def test_calculate_cost():
     # Test match with DeepSeek (flagship)
-    usage = {"prompt_tokens": 100000, "completion_tokens": 50000, "total_tokens": 150000}
+    usage = {
+        "prompt_tokens": 100000,
+        "completion_tokens": 50000,
+        "total_tokens": 150000,
+    }
     cost = calculate_cost("deepseek-chat", usage)
     assert cost is not None
     assert cost["provider"] == "DeepSeek"
@@ -32,7 +36,9 @@ def test_calculate_cost():
     assert cost["provider"] == "OpenAI"
     assert cost["input_price"] == 0.15
     assert cost["output_price"] == 0.60
-    assert pytest.approx(cost["total_cost"]) == (100000/1e6 * 0.15) + (50000/1e6 * 0.60)
+    assert pytest.approx(cost["total_cost"]) == (100000 / 1e6 * 0.15) + (
+        50000 / 1e6 * 0.60
+    )
 
     # Test match with Google Flash
     cost = calculate_cost("gemini-1.5-flash", usage)
@@ -48,36 +54,38 @@ def test_calculate_cost():
 
 def test_assembler_cost_report(tmp_path, sample_paper, template_dir):
     storage = Storage(tmp_path)
-    
+
     # 1. Test when model is matched
-    assembler = Assembler(template_dir=template_dir, storage=storage, model_used="deepseek-chat")
-    
+    assembler = Assembler(
+        template_dir=template_dir, storage=storage, model_used="deepseek-chat"
+    )
+
     writer_result = AgentResult(
         agent_name="writer",
         success=True,
         data={"keywords": ["NLP"], "affiliations": ["A"]},
-        usage={"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500}
+        usage={"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
     )
     finder_result = AgentResult(
         agent_name="finder",
         success=True,
         data={"narrative": "Related work info", "related_works": []},
-        usage={"prompt_tokens": 2000, "completion_tokens": 1000, "total_tokens": 3000}
+        usage={"prompt_tokens": 2000, "completion_tokens": 1000, "total_tokens": 3000},
     )
     criticizer_result = AgentResult(
         agent_name="criticizer",
         success=True,
         data={"critique": "A critique"},
-        usage={"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500}
+        usage={"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
     )
-    
+
     report, md_content, html_content = assembler.assemble(
         paper=sample_paper,
         writer_result=writer_result,
         finder_result=finder_result,
-        criticizer_result=criticizer_result
+        criticizer_result=criticizer_result,
     )
-    
+
     # Check that aggregated usage is correct
     # prompt: 1000 + 2000 + 1000 = 4000
     # completion: 500 + 1000 + 500 = 2000
@@ -85,12 +93,14 @@ def test_assembler_cost_report(tmp_path, sample_paper, template_dir):
     assert report.usage["prompt_tokens"] == 4000
     assert report.usage["completion_tokens"] == 2000
     assert report.usage["total_tokens"] == 6000
-    
+
     # Check that cost report exists
     assert report.cost_report is not None
     assert report.cost_report["models"][0]["provider"] == "DeepSeek"
     assert report.cost_report["models"][0]["model"] == "deepseek-chat"
-    assert pytest.approx(report.cost_report["total_cost"]) == (4000/1e6 * 0.435) + (2000/1e6 * 0.87)
+    assert pytest.approx(report.cost_report["total_cost"]) == (4000 / 1e6 * 0.435) + (
+        2000 / 1e6 * 0.87
+    )
 
     # Check that Markdown contains the cost breakdown (price table no longer rendered)
     assert "Generation Cost" in md_content
@@ -105,20 +115,22 @@ def test_assembler_cost_report(tmp_path, sample_paper, template_dir):
     assert "Official LLM Price Table" not in html_content
 
     # 2. Test when model is NOT matched -> should skip cost breakdown entirely
-    assembler_unmatched = Assembler(template_dir=template_dir, storage=storage, model_used="my-custom-llm")
+    assembler_unmatched = Assembler(
+        template_dir=template_dir, storage=storage, model_used="my-custom-llm"
+    )
     report_unmatched, md_unmatched, html_unmatched = assembler_unmatched.assemble(
         paper=sample_paper,
         writer_result=writer_result,
         finder_result=finder_result,
-        criticizer_result=criticizer_result
+        criticizer_result=criticizer_result,
     )
-    
+
     assert report_unmatched.cost_report is None
     # With no cost report, the entire Generation Cost section is omitted
     assert "Generation Cost" not in md_unmatched
     assert "Official LLM Price Table" not in md_unmatched
     assert "Generation Cost Breakdown" not in md_unmatched
-    
+
     assert "Generation Cost" not in html_unmatched
     assert "Official LLM Price Table" not in html_unmatched
     assert "Generation Cost Breakdown" not in html_unmatched

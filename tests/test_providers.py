@@ -25,6 +25,7 @@ from ppagent.providers import (
 # Registry integrity
 # ---------------------------------------------------------------------------
 
+
 class TestRegistryIntegrity:
     def test_keys_are_unique(self) -> None:
         keys = [p.key for p in PROVIDERS]
@@ -53,6 +54,7 @@ class TestRegistryIntegrity:
 # detect_provider
 # ---------------------------------------------------------------------------
 
+
 class TestDetectProvider:
     def test_none_and_empty_fall_back_to_custom(self) -> None:
         assert detect_provider(None) == CUSTOM_KEY
@@ -65,26 +67,29 @@ class TestDetectProvider:
         assert detect_provider("HTTPS://API.OPENAI.COM/V1") == "openai"
         assert detect_provider("https://Api.DeepSeek.Com") == "deepseek"
 
-    @pytest.mark.parametrize("url,key", [
-        ("https://api.openai.com/v1", "openai"),
-        ("https://api.deepseek.com", "deepseek"),
-        ("https://api.deepseek.com/v1", "deepseek"),
-        ("https://api.mistral.ai/v1", "mistral"),
-        ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini"),
-        ("https://api.anthropic.com/v1", "anthropic"),
-        ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen"),
-        # kimi_cn patterns (moonshot.cn, kimi.ai) are checked before kimi_ai.
-        ("https://api.moonshot.cn/v1", "kimi_cn"),
-        ("https://kimi.ai/v1", "kimi_cn"),
-        ("https://api.moonshot.ai/v1", "kimi_ai"),
-        ("https://open.bigmodel.cn/api/paas/v4", "glm"),
-        ("https://api.x.ai/v1", "grok"),
-        ("https://api.stepfun.ai/v1", "stepfun"),
-        ("https://api.minimax.io/v1", "minimax"),
-        ("https://api.xiaomimimo.com/v1", "mimo"),
-        ("https://ark.cn-beijing.volces.com/api/v3", "doubao"),
-        ("https://api.hunyuan.cloud.tencent.com", "tencent"),
-    ])
+    @pytest.mark.parametrize(
+        "url,key",
+        [
+            ("https://api.openai.com/v1", "openai"),
+            ("https://api.deepseek.com", "deepseek"),
+            ("https://api.deepseek.com/v1", "deepseek"),
+            ("https://api.mistral.ai/v1", "mistral"),
+            ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini"),
+            ("https://api.anthropic.com/v1", "anthropic"),
+            ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen"),
+            # kimi_cn patterns (moonshot.cn, kimi.ai) are checked before kimi_ai.
+            ("https://api.moonshot.cn/v1", "kimi_cn"),
+            ("https://kimi.ai/v1", "kimi_cn"),
+            ("https://api.moonshot.ai/v1", "kimi_ai"),
+            ("https://open.bigmodel.cn/api/paas/v4", "glm"),
+            ("https://api.x.ai/v1", "grok"),
+            ("https://api.stepfun.ai/v1", "stepfun"),
+            ("https://api.minimax.io/v1", "minimax"),
+            ("https://api.xiaomimimo.com/v1", "mimo"),
+            ("https://ark.cn-beijing.volces.com/api/v3", "doubao"),
+            ("https://api.hunyuan.cloud.tencent.com", "tencent"),
+        ],
+    )
     def test_known_urls(self, url: str, key: str) -> None:
         assert detect_provider(url) == key
 
@@ -93,31 +98,34 @@ class TestDetectProvider:
 # thinking_extra_body_for
 # ---------------------------------------------------------------------------
 
+
 class TestThinkingExtraBody:
     def test_reasoning_effort_medium_vendors(self) -> None:
         expected = {"reasoning_effort": "medium"}
         for url in [
-            "https://api.openai.com/v1",          # openai
+            "https://api.openai.com/v1",  # openai
             "https://generativelanguage.googleapis.com/v1beta/openai",  # gemini
-            "https://api.x.ai/v1",                # grok
-            "https://api.stepfun.ai/v1",          # stepfun
+            "https://api.x.ai/v1",  # grok
+            "https://api.stepfun.ai/v1",  # stepfun
         ]:
             assert thinking_extra_body_for(url) == expected, url
 
     def test_reasoning_effort_high_for_mistral(self) -> None:
-        assert thinking_extra_body_for("https://api.mistral.ai/v1") == {"reasoning_effort": "high"}
+        assert thinking_extra_body_for("https://api.mistral.ai/v1") == {
+            "reasoning_effort": "high"
+        }
 
     def test_thinking_enabled_vendors(self) -> None:
         expected = {"thinking": {"type": "enabled"}}
         for url in [
-            "https://api.deepseek.com",            # deepseek
-            "https://api.anthropic.com/v1",        # anthropic
-            "https://api.moonshot.ai/v1",          # kimi_ai
-            "https://api.moonshot.cn/v1",          # kimi_cn
-            "https://api.minimax.io/v1",           # minimax
-            "https://api.xiaomimimo.com/v1",       # mimo
+            "https://api.deepseek.com",  # deepseek
+            "https://api.anthropic.com/v1",  # anthropic
+            "https://api.moonshot.ai/v1",  # kimi_ai
+            "https://api.moonshot.cn/v1",  # kimi_cn
+            "https://api.minimax.io/v1",  # minimax
+            "https://api.xiaomimimo.com/v1",  # mimo
             "https://ark.cn-beijing.volces.com/api/v3",  # doubao
-            "https://open.bigmodel.cn/api/paas/v4",     # glm
+            "https://open.bigmodel.cn/api/paas/v4",  # glm
         ]:
             assert thinking_extra_body_for(url) == expected, url
 
@@ -139,31 +147,38 @@ class TestThinkingExtraBody:
 # is_reasoning_model
 # ---------------------------------------------------------------------------
 
+
 class TestIsReasoningModel:
-    @pytest.mark.parametrize("model", [
-        "deepseek-reasoner",
-        "DeepSeek-R1",
-        "qwq-32b",
-        "qwq-plus",
-        "magistral-medium-latest",
-        "grok-4",
-        "step-3",
-        "mimo-v2-preview",
-        "glm-5-air",
-        "glm-4.7",
-        "doubao-seed-1-6",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "deepseek-reasoner",
+            "DeepSeek-R1",
+            "qwq-32b",
+            "qwq-plus",
+            "magistral-medium-latest",
+            "grok-4",
+            "step-3",
+            "mimo-v2-preview",
+            "glm-5-air",
+            "glm-4.7",
+            "doubao-seed-1-6",
+        ],
+    )
     def test_detected_as_reasoning(self, model: str) -> None:
         assert is_reasoning_model(model) is True
 
-    @pytest.mark.parametrize("model", [
-        "gpt-4o",
-        "claude-3-5-sonnet",
-        "qwen-plus",
-        "moonshot-v1-8k",
-        "mistral-large-latest",
-        "abab6.5-chat",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "gpt-4o",
+            "claude-3-5-sonnet",
+            "qwen-plus",
+            "moonshot-v1-8k",
+            "mistral-large-latest",
+            "abab6.5-chat",
+        ],
+    )
     def test_not_reasoning(self, model: str) -> None:
         assert is_reasoning_model(model) is False
 
@@ -176,6 +191,7 @@ class TestIsReasoningModel:
 # ---------------------------------------------------------------------------
 # Spec shape — guards future ProviderSpec additions against silent mistakes.
 # ---------------------------------------------------------------------------
+
 
 class TestProviderSpecShape:
     def test_all_fields_populated(self) -> None:

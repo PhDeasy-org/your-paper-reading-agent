@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock
 
 from ppagent.agents.classifier import ClassifierAgent
-from ppagent.agents.prompts import DEFAULT_PAPER_TYPE, PAPER_TYPES
+from ppagent.agents.prompts import DEFAULT_PAPER_TYPE
 from ppagent.config import AppConfig
-from ppagent.models import AgentResult, ClassifierOutput, Paper, PaperContent
+from ppagent.models import ClassifierOutput, Paper, PaperContent
 
 
 class MockLLMClient:
@@ -18,7 +17,11 @@ class MockLLMClient:
         self.response_value = response_value
         self.messages_called = []
         self.response_model_called = None
-        self.usage = {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}
+        self.usage = {
+            "prompt_tokens": 120,
+            "completion_tokens": 30,
+            "total_tokens": 150,
+        }
 
     def reset_usage(self):
         self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -33,7 +36,9 @@ class MockLLMClient:
             {"role": "user", "content": user_prompt},
         ]
 
-    def chat_structured(self, messages: list[dict[str, str]], response_model: type) -> ClassifierOutput:
+    def chat_structured(
+        self, messages: list[dict[str, str]], response_model: type
+    ) -> ClassifierOutput:
         self.messages_called = messages
         self.response_model_called = response_model
         if isinstance(self.response_value, Exception):
@@ -68,7 +73,7 @@ def test_classifier_success(minimal_config, sample_paper_content):
         reasoning="Introduces a new method called Transformer.",
     )
     mock_llm = MockLLMClient(mock_output)
-    
+
     agent = ClassifierAgent(mock_llm, minimal_config)  # type: ignore[arg-type]
     result = agent.run(content=sample_paper_content)
 
@@ -76,7 +81,7 @@ def test_classifier_success(minimal_config, sample_paper_content):
     assert result.data["paper_type"] == "method"
     assert result.data["confidence"] == 0.95
     assert result.data["reasoning"] == "Introduces a new method called Transformer."
-    
+
     # Verify the structured response model requested was correct
     assert mock_llm.response_model_called is ClassifierOutput
     assert len(mock_llm.messages_called) == 2
@@ -97,7 +102,7 @@ def test_classifier_invalid_type_fallback(minimal_config, sample_paper_content):
         reasoning="Not sure.",
     )
     mock_llm = MockLLMClient(mock_output)
-    
+
     agent = ClassifierAgent(mock_llm, minimal_config)  # type: ignore[arg-type]
     result = agent.run(content=sample_paper_content)
 
@@ -111,7 +116,7 @@ def test_classifier_invalid_type_fallback(minimal_config, sample_paper_content):
 def test_classifier_llm_failure(minimal_config, sample_paper_content):
     """If the LLM call raises an exception, the agent should return a failure result."""
     mock_llm = MockLLMClient(RuntimeError("API error"))
-    
+
     agent = ClassifierAgent(mock_llm, minimal_config)  # type: ignore[arg-type]
     result = agent.run(content=sample_paper_content)
 
@@ -136,13 +141,13 @@ def test_classifier_missing_summary_fallback(minimal_config):
         reasoning="It is a survey.",
     )
     mock_llm = MockLLMClient(mock_output)
-    
+
     agent = ClassifierAgent(mock_llm, minimal_config)  # type: ignore[arg-type]
     result = agent.run(content=content)
 
     assert result.success is True
     assert result.data["paper_type"] == "survey"
-    
+
     # Verify the user prompt got the snippet of the markdown (capped to 2000 chars)
     user_content = mock_llm.messages_called[1]["content"]
     assert "Introduction:" in user_content

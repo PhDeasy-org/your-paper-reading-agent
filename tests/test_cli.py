@@ -7,6 +7,7 @@ from ppagent.cli import app
 from ppagent.config import AppConfig
 from ppagent.models import Paper, PaperReport, ReportSection
 
+
 @pytest.fixture
 def mock_config(tmp_path):
     cfg = AppConfig()
@@ -14,12 +15,13 @@ def mock_config(tmp_path):
     cfg.report.output_dir = str(tmp_path / "output")
     return cfg
 
+
 def test_cli_report_multiple_papers(mock_config):
     runner = CliRunner()
-    
+
     paper_1 = Paper(id="1111.1111", title="Paper One")
     paper_2 = Paper(id="2222.2222", title="Paper Two")
-    
+
     report_1 = PaperReport(
         paper=paper_1,
         metadata=ReportSection(name="metadata", content="meta 1"),
@@ -31,7 +33,7 @@ def test_cli_report_multiple_papers(mock_config):
         previous_works=ReportSection(name="previous_works", content="prev 1"),
         related_works=[],
     )
-    
+
     report_2 = PaperReport(
         paper=paper_2,
         metadata=ReportSection(name="metadata", content="meta 2"),
@@ -44,15 +46,16 @@ def test_cli_report_multiple_papers(mock_config):
         related_works=[],
     )
 
-    with patch("ppagent.cli._load", return_value=mock_config), \
-         patch("ppagent.pipeline.PaperPipeline") as mock_pipeline_cls, \
-         patch("ppagent.hf.paper_info"), \
-         patch("webbrowser.open") as mock_webbrowser_open:
-         
+    with (
+        patch("ppagent.cli._load", return_value=mock_config),
+        patch("ppagent.pipeline.PaperPipeline") as mock_pipeline_cls,
+        patch("ppagent.hf.paper_info"),
+        patch("webbrowser.open") as mock_webbrowser_open,
+    ):
         mock_pipeline = MagicMock()
         mock_pipeline_cls.return_value = mock_pipeline
         mock_pipeline.storage.report_exists.return_value = False
-        
+
         def mock_report(paper_id):
             if paper_id == "1111.1111":
                 report_dir = Path(mock_config.report.output_dir) / "paper_one"
@@ -65,11 +68,11 @@ def test_cli_report_multiple_papers(mock_config):
                 (report_dir / "report.html").touch()
                 return report_2
             raise ValueError("Unexpected paper_id")
-            
+
         mock_pipeline.report.side_effect = mock_report
-        
+
         result = runner.invoke(app, ["report", "1111.1111", "2222.2222", "--no-open"])
-        
+
         assert result.exit_code == 0
         assert "Generating report for paper: 1111.1111" in result.stdout
         assert "Generating report for paper: 2222.2222" in result.stdout
@@ -79,7 +82,7 @@ def test_cli_report_multiple_papers(mock_config):
 
 def test_cli_report_one_failure_continues(mock_config):
     runner = CliRunner()
-    
+
     paper_2 = Paper(id="2222.2222", title="Paper Two")
     report_2 = PaperReport(
         paper=paper_2,
@@ -93,15 +96,16 @@ def test_cli_report_one_failure_continues(mock_config):
         related_works=[],
     )
 
-    with patch("ppagent.cli._load", return_value=mock_config), \
-         patch("ppagent.pipeline.PaperPipeline") as mock_pipeline_cls, \
-         patch("ppagent.hf.paper_info"), \
-         patch("webbrowser.open"):
-         
+    with (
+        patch("ppagent.cli._load", return_value=mock_config),
+        patch("ppagent.pipeline.PaperPipeline") as mock_pipeline_cls,
+        patch("ppagent.hf.paper_info"),
+        patch("webbrowser.open"),
+    ):
         mock_pipeline = MagicMock()
         mock_pipeline_cls.return_value = mock_pipeline
         mock_pipeline.storage.report_exists.return_value = False
-        
+
         def mock_report(paper_id):
             if paper_id == "1111.1111":
                 raise ValueError("HF Paper not found")
@@ -111,11 +115,11 @@ def test_cli_report_one_failure_continues(mock_config):
                 (report_dir / "report.html").touch()
                 return report_2
             raise ValueError("Unexpected paper_id")
-            
+
         mock_pipeline.report.side_effect = mock_report
-        
+
         result = runner.invoke(app, ["report", "1111.1111", "2222.2222", "--no-open"])
-        
+
         assert result.exit_code == 1
         assert "Generating report for paper: 1111.1111" in result.stdout
         assert "Report generation failed for 1111.1111" in result.stdout
@@ -140,7 +144,7 @@ def test_cli_config_init(tmp_path):
         result = runner.invoke(app, ["config", "init"])
         assert result.exit_code == 0
         assert (tmp_path / "config" / "settings.toml").exists()
-        
+
         # Calling it again should print that it already exists
         result_again = runner.invoke(app, ["config", "init"])
         assert "Config already exists" in result_again.stdout
@@ -148,6 +152,7 @@ def test_cli_config_init(tmp_path):
 
 def test_paper_published_at_parsing():
     from datetime import datetime
+
     p1 = Paper(id="2604.12345", title="Test Paper 1")
     assert p1.published_at == datetime(2026, 4, 1)
 
@@ -158,13 +163,15 @@ def test_paper_published_at_parsing():
     assert p3.published_at == datetime(1997, 3, 1)
 
     # If already set, should not override
-    p4 = Paper(id="2604.12345", title="Test Paper 4", published_at=datetime(2026, 4, 15))
+    p4 = Paper(
+        id="2604.12345", title="Test Paper 4", published_at=datetime(2026, 4, 15)
+    )
     assert p4.published_at == datetime(2026, 4, 15)
 
 
 def test_fetch_arxiv_info_success():
     from ppagent.hf import fetch_arxiv_info
-    
+
     mock_xml = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <entry>
@@ -175,12 +182,12 @@ def test_fetch_arxiv_info_success():
     <summary>This is a summary.</summary>
   </entry>
 </feed>"""
-    
+
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_response = MagicMock()
         mock_response.read.return_value = mock_xml.encode("utf-8")
         mock_urlopen.return_value.__enter__.return_value = mock_response
-        
+
         paper = fetch_arxiv_info("2604.12345")
         assert paper is not None
         assert paper.title == "Test Arxiv Paper"
@@ -192,40 +199,48 @@ def test_fetch_arxiv_info_success():
 def test_pipeline_arxiv_fallback_integration(mock_config):
     from ppagent.pipeline import PaperPipeline
     from ppagent.hf import HfCliError
-    
+
     mock_config.llms.text.api_key = "dummy"
     mock_config.llms.vision.api_key = "dummy"
     mock_config.llms.searcher.api_key = "dummy"
-    
+
     paper_id = "2606.01075"
 
-    
-    with patch("ppagent.hf.paper_info", side_effect=HfCliError("not found")), \
-         patch("ppagent.hf.fetch_arxiv_info") as mock_fetch_arxiv, \
-         patch("ppagent.hf.paper_read", return_value="some markdown content"), \
-         patch("ppagent.pdf.download_pdf"), \
-         patch("ppagent.pdf.extract_text"), \
-         patch("ppagent.agents.classifier.ClassifierAgent.run") as mock_classifier, \
-         patch("ppagent.agents.writer.WriterAgent.run") as mock_writer, \
-         patch("ppagent.agents.finder.FinderAgent.run") as mock_finder, \
-         patch("ppagent.agents.criticizer.CriticizerAgent.run") as mock_criticizer:
-         
-         from ppagent.models import AgentResult, Paper
-         mock_paper = Paper(id=paper_id, title="Attention Is All You Need")
-         mock_fetch_arxiv.return_value = mock_paper
-         
-         # Mock agents
-         mock_classifier.return_value = AgentResult(agent_name="classifier", success=True, data={"paper_type": "method", "confidence": 0.95})
-         mock_writer.return_value = AgentResult(agent_name="writer", success=True, data={})
-         mock_finder.return_value = AgentResult(agent_name="finder", success=True, data={})
-         mock_criticizer.return_value = AgentResult(agent_name="criticizer", success=True, data={})
-         
-         pipeline = PaperPipeline(mock_config)
-         report = pipeline.report(paper_id)
-         
-         assert report.paper.title == "Attention Is All You Need"
-         assert report.paper.published_at is not None
-         mock_fetch_arxiv.assert_called_once_with(paper_id)
+    with (
+        patch("ppagent.hf.paper_info", side_effect=HfCliError("not found")),
+        patch("ppagent.hf.fetch_arxiv_info") as mock_fetch_arxiv,
+        patch("ppagent.hf.paper_read", return_value="some markdown content"),
+        patch("ppagent.pdf.download_pdf"),
+        patch("ppagent.pdf.extract_text"),
+        patch("ppagent.agents.classifier.ClassifierAgent.run") as mock_classifier,
+        patch("ppagent.agents.writer.WriterAgent.run") as mock_writer,
+        patch("ppagent.agents.finder.FinderAgent.run") as mock_finder,
+        patch("ppagent.agents.criticizer.CriticizerAgent.run") as mock_criticizer,
+    ):
+        from ppagent.models import AgentResult, Paper
 
+        mock_paper = Paper(id=paper_id, title="Attention Is All You Need")
+        mock_fetch_arxiv.return_value = mock_paper
 
+        # Mock agents
+        mock_classifier.return_value = AgentResult(
+            agent_name="classifier",
+            success=True,
+            data={"paper_type": "method", "confidence": 0.95},
+        )
+        mock_writer.return_value = AgentResult(
+            agent_name="writer", success=True, data={}
+        )
+        mock_finder.return_value = AgentResult(
+            agent_name="finder", success=True, data={}
+        )
+        mock_criticizer.return_value = AgentResult(
+            agent_name="criticizer", success=True, data={}
+        )
 
+        pipeline = PaperPipeline(mock_config)
+        report = pipeline.report(paper_id)
+
+        assert report.paper.title == "Attention Is All You Need"
+        assert report.paper.published_at is not None
+        mock_fetch_arxiv.assert_called_once_with(paper_id)

@@ -10,7 +10,9 @@ from ppagent.agents.figure_selector import FigureSelectorAgent
 from ppagent.figures import Figure, extract_figures
 
 # The cached paper PDF shipped with the repo for this paper.
-CACHED_PDF = Path(__file__).resolve().parent.parent / ".cache" / "pdfs" / "2606.01075.pdf"
+CACHED_PDF = (
+    Path(__file__).resolve().parent.parent / ".cache" / "pdfs" / "2606.01075.pdf"
+)
 
 
 @pytest.fixture
@@ -62,7 +64,11 @@ def test_figure_selector_single_candidate_calls_llm(tmp_path):
 
     class AcceptLLM:
         def reset_usage(self):
-            self.usage = {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+            self.usage = {
+                "prompt_tokens": 5,
+                "completion_tokens": 10,
+                "total_tokens": 15,
+            }
 
         def get_usage(self):
             return self.usage
@@ -97,7 +103,11 @@ def test_figure_selector_parses_llm_choice(tmp_path):
 
     class FakeLLM:
         def reset_usage(self):
-            self.usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+            self.usage = {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+            }
 
         def get_usage(self):
             return self.usage

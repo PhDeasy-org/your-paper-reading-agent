@@ -47,6 +47,7 @@ class PaperPipeline:
         # Map each report-stage agent name to the model it uses, so the
         # assembler can compute a per-model cost breakdown.
         from ppagent.config import AGENT_LLM_ROLE
+
         model_map = {
             name: config.llms.for_role(role).model
             for name, role in AGENT_LLM_ROLE.items()
@@ -65,7 +66,9 @@ class PaperPipeline:
     ) -> list[Paper]:
         """Fetch daily papers and filter by user profile."""
         self.console.print("[bold]Searching papers matching user profile...[/bold]")
-        with self.console.status("[dim]Fetching papers from HuggingFace...[/dim]", spinner="dots"):
+        with self.console.status(
+            "[dim]Fetching papers from HuggingFace...[/dim]", spinner="dots"
+        ):
             papers = hf.list_papers(
                 date=date or self.config.search.default_date,
                 limit=limit or self.config.search.default_limit,
@@ -75,11 +78,15 @@ class PaperPipeline:
 
         profile_path = self.config.profile_path
         if not profile_path.exists():
-            logger.warning("Profile not found at %s — returning all papers", profile_path)
+            logger.warning(
+                "Profile not found at %s — returning all papers", profile_path
+            )
             return papers[: self.config.search.max_reports_per_run]
 
         profile = profile_path.read_text()
-        with self.console.status("[dim]Scoring paper relevance...[/dim]", spinner="dots"):
+        with self.console.status(
+            "[dim]Scoring paper relevance...[/dim]", spinner="dots"
+        ):
             result = self.searcher.run(papers=papers, profile=profile)
 
         if not result.success:
@@ -96,79 +103,134 @@ class PaperPipeline:
         self.console.print("\n[bold cyan]🚀 Starting Report Generation[/bold cyan]")
         self.console.print(f"[bold]Paper ID:[/bold] {paper_id}")
         self.console.print("[bold]LLM configuration in use:[/bold]")
-        self.console.print(f"  • [bold]Text model (Writer/Finder/Criticizer):[/bold] [cyan]{self.config.llms.text.model}[/cyan]")
-        self.console.print(f"    [dim]Base URL: {self.config.llms.text.base_url} | Temperature: {self.config.llms.text.temperature} | Max tokens: {self.config.llms.text.max_tokens} | Thinking: {self.config.llms.text.enable_thinking}[/dim]")
-        self.console.print(f"  • [bold]Vision model (Figure Selector):[/bold] [cyan]{self.config.llms.vision.model}[/cyan]")
-        self.console.print(f"    [dim]Base URL: {self.config.llms.vision.base_url} | Temperature: {self.config.llms.vision.temperature} | Max tokens: {self.config.llms.vision.max_tokens} | Thinking: {self.config.llms.vision.enable_thinking}[/dim]")
+        self.console.print(
+            f"  • [bold]Text model (Writer/Finder/Criticizer):[/bold] [cyan]{self.config.llms.text.model}[/cyan]"
+        )
+        self.console.print(
+            f"    [dim]Base URL: {self.config.llms.text.base_url} | Temperature: {self.config.llms.text.temperature} | Max tokens: {self.config.llms.text.max_tokens} | Thinking: {self.config.llms.text.enable_thinking}[/dim]"
+        )
+        self.console.print(
+            f"  • [bold]Vision model (Figure Selector):[/bold] [cyan]{self.config.llms.vision.model}[/cyan]"
+        )
+        self.console.print(
+            f"    [dim]Base URL: {self.config.llms.vision.base_url} | Temperature: {self.config.llms.vision.temperature} | Max tokens: {self.config.llms.vision.max_tokens} | Thinking: {self.config.llms.vision.enable_thinking}[/dim]"
+        )
 
         # Fetch paper info
-        self.console.print("\n[bold yellow]🔄 Phase 1/8: Fetching paper metadata...[/bold yellow]")
-        with self.console.status("[dim]Contacting HuggingFace/arXiv APIs...[/dim]", spinner="dots"):
+        self.console.print(
+            "\n[bold yellow]🔄 Phase 1/8: Fetching paper metadata...[/bold yellow]"
+        )
+        with self.console.status(
+            "[dim]Contacting HuggingFace/arXiv APIs...[/dim]", spinner="dots"
+        ):
             try:
                 paper = hf.paper_info(paper_id)
-                self.console.print(f"  [green]✓[/green] Found paper on HuggingFace: [bold]\"{paper.title}\"[/bold]")
+                self.console.print(
+                    f'  [green]✓[/green] Found paper on HuggingFace: [bold]"{paper.title}"[/bold]'
+                )
             except HfCliError:
-                self.console.print("  [dim]HuggingFace metadata fetch failed, trying arXiv API fallback...[/dim]")
+                self.console.print(
+                    "  [dim]HuggingFace metadata fetch failed, trying arXiv API fallback...[/dim]"
+                )
                 arxiv_paper = hf.fetch_arxiv_info(paper_id)
                 if arxiv_paper:
                     paper = arxiv_paper
-                    self.console.print(f"  [green]✓[/green] Found paper on arXiv: [bold]\"{paper.title}\"[/bold]")
+                    self.console.print(
+                        f'  [green]✓[/green] Found paper on arXiv: [bold]"{paper.title}"[/bold]'
+                    )
                 else:
-                    self.console.print("  [yellow]⚠[/yellow] Metadata fetch failed on both HuggingFace and arXiv, using minimal placeholder.")
+                    self.console.print(
+                        "  [yellow]⚠[/yellow] Metadata fetch failed on both HuggingFace and arXiv, using minimal placeholder."
+                    )
                     paper = Paper(id=paper_id, title=paper_id)
 
-
         # Get paper content: try hf papers read first, fall back to PDF
-        self.console.print("[bold yellow]🔄 Phase 2/8: Retrieving paper full text content...[/bold yellow]")
+        self.console.print(
+            "[bold yellow]🔄 Phase 2/8: Retrieving paper full text content...[/bold yellow]"
+        )
         content_md = ""
         pdf_path = None
-        with self.console.status("[dim]Retrieving full text from HuggingFace or extracting from PDF...[/dim]", spinner="dots"):
+        with self.console.status(
+            "[dim]Retrieving full text from HuggingFace or extracting from PDF...[/dim]",
+            spinner="dots",
+        ):
             try:
                 content_md = hf.paper_read(paper_id)
-                self.console.print(f"  [green]✓[/green] Successfully retrieved paper content via HuggingFace API ({len(content_md)} characters)")
+                self.console.print(
+                    f"  [green]✓[/green] Successfully retrieved paper content via HuggingFace API ({len(content_md)} characters)"
+                )
             except HfCliError:
-                self.console.print("  [dim]HuggingFace paper read failed. Attempting to download PDF and extract text...[/dim]")
+                self.console.print(
+                    "  [dim]HuggingFace paper read failed. Attempting to download PDF and extract text...[/dim]"
+                )
                 if self.config.report.download_pdf:
                     try:
-                        self.console.print(f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]")
+                        self.console.print(
+                            f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]"
+                        )
                         pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
                         self.console.print("  Extracting text from PDF...")
                         content_md = pdf.extract_text(pdf_path)
-                        self.console.print(f"  [green]✓[/green] Successfully extracted PDF text ({len(content_md)} characters)")
+                        self.console.print(
+                            f"  [green]✓[/green] Successfully extracted PDF text ({len(content_md)} characters)"
+                        )
                     except Exception as pdf_exc:
-                        self.console.print(f"  [red]✗[/red] PDF download/extraction failed: {pdf_exc}")
+                        self.console.print(
+                            f"  [red]✗[/red] PDF download/extraction failed: {pdf_exc}"
+                        )
 
         if not content_md:
-            self.console.print("  [yellow]⚠[/yellow] No full text content available. Falling back to using paper abstract/summary.")
+            self.console.print(
+                "  [yellow]⚠[/yellow] No full text content available. Falling back to using paper abstract/summary."
+            )
             content_md = paper.summary or "Paper content unavailable."
 
         paper_content = PaperContent(paper=paper, markdown=content_md)
 
         # Classify paper type
-        self.console.print("[bold yellow]🔄 Phase 3/8: Classifying paper type...[/bold yellow]")
+        self.console.print(
+            "[bold yellow]🔄 Phase 3/8: Classifying paper type...[/bold yellow]"
+        )
         paper_type = "method"  # default fallback
-        with self.console.status("[dim]Running Classifier LLM...[/dim]", spinner="dots"):
+        with self.console.status(
+            "[dim]Running Classifier LLM...[/dim]", spinner="dots"
+        ):
             classifier_result = self.classifier.run(content=paper_content)
             if classifier_result.success:
                 paper_type = classifier_result.data.get("paper_type", "method")
                 confidence = classifier_result.data.get("confidence", 0.0)
                 reasoning = classifier_result.data.get("reasoning", "")
-                self.console.print(f"  [green]✓[/green] Paper classified as: [bold cyan]{paper_type}[/bold cyan] (confidence: {confidence:.0%})")
+                self.console.print(
+                    f"  [green]✓[/green] Paper classified as: [bold cyan]{paper_type}[/bold cyan] (confidence: {confidence:.0%})"
+                )
                 if reasoning:
                     self.console.print(f"    [dim]{reasoning}[/dim]")
             else:
-                self.console.print(f"  [yellow]⚠[/yellow] Classification failed ({classifier_result.error}); defaulting to 'method'")
+                self.console.print(
+                    f"  [yellow]⚠[/yellow] Classification failed ({classifier_result.error}); defaulting to 'method'"
+                )
 
         # Run writer and finder in parallel
-        self.console.print("[bold yellow]🔄 Phase 4/8: Running Writer and Finder agents in parallel...[/bold yellow]")
+        self.console.print(
+            "[bold yellow]🔄 Phase 4/8: Running Writer and Finder agents in parallel...[/bold yellow]"
+        )
         writer_result: AgentResult | None = None
         finder_result: AgentResult | None = None
 
-        with self.console.status("[dim]Running Writer and Finder agents concurrently...[/dim]", spinner="dots"):
+        with self.console.status(
+            "[dim]Running Writer and Finder agents concurrently...[/dim]",
+            spinner="dots",
+        ):
             with ThreadPoolExecutor(max_workers=2) as executor:
-                self.console.print(f"  Running Writer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]...")
-                writer_future = executor.submit(self.writer.run, content=paper_content, paper_type=paper_type)
-                self.console.print(f"  Running Finder agent using text model: [cyan]{self.config.llms.text.model}[/cyan]...")
+                self.console.print(
+                    f"  Running Writer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+                )
+                writer_future = executor.submit(
+                    self.writer.run, content=paper_content, paper_type=paper_type
+                )
+                self.console.print(
+                    f"  Running Finder agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+                )
                 finder_future = executor.submit(self.finder.run, content=paper_content)
 
                 for future in as_completed([writer_future, finder_future]):
@@ -176,93 +238,165 @@ class PaperPipeline:
                     if result.agent_name == "writer":
                         writer_result = result
                         if result.success:
-                            self.console.print("  [green]✓[/green] Writer agent completed successfully.")
+                            self.console.print(
+                                "  [green]✓[/green] Writer agent completed successfully."
+                            )
                         else:
-                            self.console.print(f"  [red]✗[/red] Writer agent failed: {result.error}")
+                            self.console.print(
+                                f"  [red]✗[/red] Writer agent failed: {result.error}"
+                            )
                     elif result.agent_name == "finder":
                         finder_result = result
                         if result.success:
-                            self.console.print("  [green]✓[/green] Finder agent completed successfully.")
+                            self.console.print(
+                                "  [green]✓[/green] Finder agent completed successfully."
+                            )
                         else:
-                            self.console.print(f"  [red]✗[/red] Finder agent failed: {result.error}")
+                            self.console.print(
+                                f"  [red]✗[/red] Finder agent failed: {result.error}"
+                            )
 
         # Ensure results exist
         if writer_result is None:
-            writer_result = AgentResult(agent_name="writer", success=False, error="Writer did not complete")
+            writer_result = AgentResult(
+                agent_name="writer", success=False, error="Writer did not complete"
+            )
         if finder_result is None:
-            finder_result = AgentResult(agent_name="finder", success=False, error="Finder did not complete")
+            finder_result = AgentResult(
+                agent_name="finder", success=False, error="Finder did not complete"
+            )
 
         # Criticizer depends on writer output
-        self.console.print("[bold yellow]🔄 Phase 5/8: Running Criticizer agent to refine report...[/bold yellow]")
-        with self.console.status("[dim]Running Criticizer LLM...[/dim]", spinner="dots"):
-            self.console.print(f"  Running Criticizer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]...")
+        self.console.print(
+            "[bold yellow]🔄 Phase 5/8: Running Criticizer agent to refine report...[/bold yellow]"
+        )
+        with self.console.status(
+            "[dim]Running Criticizer LLM...[/dim]", spinner="dots"
+        ):
+            self.console.print(
+                f"  Running Criticizer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+            )
             criticizer_result = self.criticizer.run(
                 content=paper_content,
                 writer_sections=writer_result.data if writer_result.success else None,
                 paper_type=paper_type,
             )
             if criticizer_result.success:
-                self.console.print("  [green]✓[/green] Criticizer agent completed successfully.")
+                self.console.print(
+                    "  [green]✓[/green] Criticizer agent completed successfully."
+                )
             else:
-                self.console.print(f"  [red]✗[/red] Criticizer agent failed: {criticizer_result.error}")
+                self.console.print(
+                    f"  [red]✗[/red] Criticizer agent failed: {criticizer_result.error}"
+                )
 
         # Ensure we have the PDF downloaded for figure extraction.
         # (hf papers read may have succeeded without a local PDF.)
-        self.console.print("[bold yellow]🔄 Phase 6/8: Ensuring PDF is downloaded for figure extraction...[/bold yellow]")
-        with self.console.status("[dim]Checking and downloading PDF if necessary...[/dim]", spinner="dots"):
+        self.console.print(
+            "[bold yellow]🔄 Phase 6/8: Ensuring PDF is downloaded for figure extraction...[/bold yellow]"
+        )
+        with self.console.status(
+            "[dim]Checking and downloading PDF if necessary...[/dim]", spinner="dots"
+        ):
             if pdf_path is None and self.config.report.download_pdf:
                 try:
-                    self.console.print(f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]")
+                    self.console.print(
+                        f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]"
+                    )
                     pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
-                    self.console.print(f"  [green]✓[/green] PDF downloaded successfully to [dim]{pdf_path}[/dim]")
+                    self.console.print(
+                        f"  [green]✓[/green] PDF downloaded successfully to [dim]{pdf_path}[/dim]"
+                    )
                 except Exception as exc:
-                    self.console.print(f"  [yellow]⚠[/yellow] Could not download PDF for figures: {exc}")
+                    self.console.print(
+                        f"  [yellow]⚠[/yellow] Could not download PDF for figures: {exc}"
+                    )
                     pdf_path = None
             elif pdf_path is not None:
-                self.console.print(f"  [green]✓[/green] PDF already available at [dim]{pdf_path}[/dim]")
+                self.console.print(
+                    f"  [green]✓[/green] PDF already available at [dim]{pdf_path}[/dim]"
+                )
             else:
-                self.console.print("  [dim]PDF downloading is disabled; skipping PDF check.[/dim]")
+                self.console.print(
+                    "  [dim]PDF downloading is disabled; skipping PDF check.[/dim]"
+                )
 
         # Extract captioned figures and let the vision LLM decide which (if any)
         # to insert. The LLM may pick zero, one, or several figures and assign
         # each to the report section it best illustrates.
         # Figures are written into the paper's report directory so they sit
         # next to report.html and can be referenced by a relative path.
-        self.console.print("[bold yellow]🔄 Phase 7/8: Extracting and selecting paper figures...[/bold yellow]")
+        self.console.print(
+            "[bold yellow]🔄 Phase 7/8: Extracting and selecting paper figures...[/bold yellow]"
+        )
         paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
         selected_figures: list[figures_mod.SelectedFigure] = []
         figure_selector_result: AgentResult | None = None
         if pdf_path is not None:
-            with self.console.status("[dim]Extracting figures and running Vision LLM selector...[/dim]", spinner="dots"):
+            with self.console.status(
+                "[dim]Extracting figures and running Vision LLM selector...[/dim]",
+                spinner="dots",
+            ):
                 try:
                     self.console.print("  Extracting figures from PDF...")
                     figures = figures_mod.extract_figures(pdf_path, paper_dir)
-                    self.console.print(f"  Found {len(figures)} figures/tables in the PDF.")
+                    self.console.print(
+                        f"  Found {len(figures)} figures/tables in the PDF."
+                    )
                 except Exception as exc:
-                    self.console.print(f"  [red]✗[/red] Figure extraction failed: {exc}")
+                    self.console.print(
+                        f"  [red]✗[/red] Figure extraction failed: {exc}"
+                    )
                     figures = []
                 if figures:
-                    self.console.print(f"  Running figure selector agent using vision model: [cyan]{self.config.llms.vision.model}[/cyan]...")
-                    figure_selector_result = self.figure_selector.run(figures=figures, base_dir=paper_dir)
+                    self.console.print(
+                        f"  Running figure selector agent using vision model: [cyan]{self.config.llms.vision.model}[/cyan]..."
+                    )
+                    figure_selector_result = self.figure_selector.run(
+                        figures=figures, base_dir=paper_dir
+                    )
                     if figure_selector_result.success:
-                        selected_figures = figure_selector_result.data.get("selected_figures", [])
+                        selected_figures = figure_selector_result.data.get(
+                            "selected_figures", []
+                        )
                         if selected_figures:
-                            self.console.print(f"  [green]✓[/green] Selected {len(selected_figures)} figure(s):")
+                            self.console.print(
+                                f"  [green]✓[/green] Selected {len(selected_figures)} figure(s):"
+                            )
                             for sf in selected_figures:
-                                fig_title = sf.figure.caption[:60] + "..." if len(sf.figure.caption) > 60 else sf.figure.caption
-                                self.console.print(f"    • Figure {sf.figure.figure_number} → [cyan]{sf.section}[/cyan] - [italic]{fig_title}[/italic]")
+                                fig_title = (
+                                    sf.figure.caption[:60] + "..."
+                                    if len(sf.figure.caption) > 60
+                                    else sf.figure.caption
+                                )
+                                self.console.print(
+                                    f"    • Figure {sf.figure.figure_number} → [cyan]{sf.section}[/cyan] - [italic]{fig_title}[/italic]"
+                                )
                         else:
                             none_reason = figure_selector_result.data.get("none_reason")
-                            reason_msg = f" (reason: {none_reason})" if none_reason else ""
-                            self.console.print(f"  [dim]Figure selector chose not to insert any figures{reason_msg}.[/dim]")
+                            reason_msg = (
+                                f" (reason: {none_reason})" if none_reason else ""
+                            )
+                            self.console.print(
+                                f"  [dim]Figure selector chose not to insert any figures{reason_msg}.[/dim]"
+                            )
                     else:
-                        self.console.print(f"  [red]✗[/red] Figure selector agent failed: {figure_selector_result.error}")
+                        self.console.print(
+                            f"  [red]✗[/red] Figure selector agent failed: {figure_selector_result.error}"
+                        )
         else:
-            self.console.print("  [dim]No PDF path available; skipping figure extraction.[/dim]")
+            self.console.print(
+                "  [dim]No PDF path available; skipping figure extraction.[/dim]"
+            )
 
         # Assemble
-        self.console.print("[bold yellow]🔄 Phase 8/8: Assembling final report...[/bold yellow]")
-        with self.console.status("[dim]Formatting, generating LaTeX equations, and writing report files...[/dim]", spinner="dots"):
+        self.console.print(
+            "[bold yellow]🔄 Phase 8/8: Assembling final report...[/bold yellow]"
+        )
+        with self.console.status(
+            "[dim]Formatting, generating LaTeX equations, and writing report files...[/dim]",
+            spinner="dots",
+        ):
             report, _, _ = self.assembler.assemble(
                 paper=paper,
                 writer_result=writer_result,
@@ -296,7 +430,13 @@ class PaperPipeline:
             if self.storage.report_exists(paper.title, paper.published_at):
                 if prompt_replace:
                     try:
-                        answer = input(f"Report for \"{paper.title}\" already exists. Regenerate? [y/N] ").strip().lower()
+                        answer = (
+                            input(
+                                f'Report for "{paper.title}" already exists. Regenerate? [y/N] '
+                            )
+                            .strip()
+                            .lower()
+                        )
                     except (EOFError, KeyboardInterrupt):
                         answer = ""
                     if answer != "y":

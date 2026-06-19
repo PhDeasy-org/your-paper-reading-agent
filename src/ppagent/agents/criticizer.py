@@ -51,7 +51,9 @@ class CriticizerAgent(AgentBase):
         )
 
         try:
-            system_prompt = CRITICIZER_SYSTEM_PROMPTS.get(paper_type, CRITICIZER_SYSTEM_PROMPTS[DEFAULT_PAPER_TYPE])
+            system_prompt = CRITICIZER_SYSTEM_PROMPTS.get(
+                paper_type, CRITICIZER_SYSTEM_PROMPTS[DEFAULT_PAPER_TYPE]
+            )
             lang = self.config.report.language
             if lang and lang.lower() != "english":
                 system_prompt += f"\n\nIMPORTANT: Write ALL output text in {lang}. Keep paper titles and technical terms in their original language."

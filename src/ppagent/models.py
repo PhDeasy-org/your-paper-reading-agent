@@ -32,8 +32,8 @@ class Paper(BaseModel):
         if not self.hf_url and self.id:
             self.hf_url = f"https://huggingface.co/papers/{self.id}"
         if not self.published_at and self.id:
-            cleaned = self.id.split('/')[-1]
-            match = re.match(r'^(\d{2})(\d{2})\.\d+', cleaned)
+            cleaned = self.id.split("/")[-1]
+            match = re.match(r"^(\d{2})(\d{2})\.\d+", cleaned)
             if match:
                 yy, mm = match.groups()
                 try:
@@ -45,7 +45,7 @@ class Paper(BaseModel):
                 except ValueError:
                     pass
             else:
-                match_old = re.match(r'^(\d{2})(\d{2})\d+', cleaned)
+                match_old = re.match(r"^(\d{2})(\d{2})\d+", cleaned)
                 if match_old:
                     yy, mm = match_old.groups()
                     try:
@@ -56,7 +56,6 @@ class Paper(BaseModel):
                             self.published_at = datetime(year, month, 1)
                     except ValueError:
                         pass
-
 
 
 class PaperContent(BaseModel):

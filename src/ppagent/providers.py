@@ -39,6 +39,7 @@ class ProviderSpec:
     default_model: str
     url_patterns: tuple[str, ...] = field(default=())
     thinking_extra_body: dict[str, Any] | None = None
+    supports_responses_api: bool = False
 
 
 # Two shapes of "extended thinking" parameters seen across vendors.
@@ -56,6 +57,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="gpt-4o",
         url_patterns=("openai.com",),
         thinking_extra_body=_REASONING_MEDIUM,
+        supports_responses_api=True,
     ),
     ProviderSpec(
         key="deepseek",
@@ -131,6 +133,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="grok-2-latest",
         url_patterns=("x.ai",),
         thinking_extra_body=_REASONING_MEDIUM,
+        supports_responses_api=True,
     ),
     ProviderSpec(
         key="stepfun",
@@ -193,9 +196,18 @@ CUSTOM_KEY = "custom"
 # cross-vendor heuristics: if any hint appears in the (lowercased) model name,
 # structured output is forced onto the more robust MD_JSON mode.
 REASONING_MODEL_HINTS: tuple[str, ...] = (
-    "deepseek", "reasoner", "r1", "qwq", "qwq-plus",
-    "magistral", "grok-4", "step-3", "mimo-v2",
-    "glm-5", "glm-4.7", "doubao-seed",
+    "deepseek",
+    "reasoner",
+    "r1",
+    "qwq",
+    "qwq-plus",
+    "magistral",
+    "grok-4",
+    "step-3",
+    "mimo-v2",
+    "glm-5",
+    "glm-4.7",
+    "doubao-seed",
 )
 
 
@@ -233,3 +245,11 @@ def is_reasoning_model(model: str) -> bool:
     """Heuristic: does ``model`` look like a reasoning/thinking model?"""
     model_lower = model.lower()
     return any(hint in model_lower for hint in REASONING_MODEL_HINTS)
+
+
+def supports_responses_api_for(base_url: str | None) -> bool:
+    """Return whether the provider behind ``base_url`` supports the Responses API."""
+    if not base_url:
+        return False
+    spec = get_provider(detect_provider(base_url))
+    return spec.supports_responses_api if spec else False

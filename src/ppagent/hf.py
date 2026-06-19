@@ -141,7 +141,7 @@ def fetch_arxiv_info(paper_id: str) -> Paper | None:
     import xml.etree.ElementTree as ET
     from datetime import datetime
 
-    cleaned_id = paper_id.split('/')[-1]
+    cleaned_id = paper_id.split("/")[-1]
     url = f"http://export.arxiv.org/api/query?id_list={cleaned_id}"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ppagent/1.0"})
@@ -194,4 +194,3 @@ def fetch_arxiv_info(paper_id: str) -> Paper | None:
     except Exception as e:
         logger.warning("Failed to fetch info from arXiv API for %s: %s", paper_id, e)
         return None
-

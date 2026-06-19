@@ -33,7 +33,9 @@ class FigureSelectorAgent(AgentBase):
     """Lets the vision LLM decide which figures (if any) to insert, and where."""
 
     name = "figure_selector"
-    description = "Selects which paper figures to insert and their report section via vision LLM."
+    description = (
+        "Selects which paper figures to insert and their report section via vision LLM."
+    )
 
     def run(self, *, figures: list[Figure], base_dir: Path) -> AgentResult:  # type: ignore[override]
         """Select figures to insert.
@@ -56,16 +58,16 @@ class FigureSelectorAgent(AgentBase):
                 usage=self.llm.get_usage(),
             )
 
-        catalog_lines = [
-            f"Figure {f.figure_number}: {f.caption}" for f in figures
-        ]
+        catalog_lines = [f"Figure {f.figure_number}: {f.caption}" for f in figures]
         user_text = FIGURE_SELECTOR_USER_PROMPT_TEMPLATE.format(
             catalog="\n".join(catalog_lines)
         )
         image_paths = [base_dir / f.image_path for f in figures]
 
         try:
-            raw = self.llm.chat_vision(FIGURE_SELECTOR_SYSTEM_PROMPT, user_text, image_paths)
+            raw = self.llm.chat_vision(
+                FIGURE_SELECTOR_SYSTEM_PROMPT, user_text, image_paths
+            )
         except Exception as exc:
             logger.warning(
                 "Figure selection LLM call failed: %s — inserting no figures", exc

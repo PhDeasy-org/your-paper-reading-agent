@@ -50,7 +50,12 @@ class Figure:
 # Report sections that a selected figure may be assigned to. Kept stable
 # across paper types: the heading *text* varies (see WRITER_SECTION_LABELS),
 # but the report always renders these section blocks.
-FIGURE_SECTIONS: tuple[str, ...] = ("method", "evaluation", "benchmarks", "previous_works")
+FIGURE_SECTIONS: tuple[str, ...] = (
+    "method",
+    "evaluation",
+    "benchmarks",
+    "previous_works",
+)
 
 
 @dataclass
@@ -211,7 +216,6 @@ def _figure_region(page: fitz.Page, caption_bbox: fitz.Rect) -> fitz.Rect | None
         # Region too small to be a real figure (e.g. inline "Figure" mention).
         return None
     return fitz.Rect(x0, fig_top, x1, y1)
-
 
 
 def extract_figures(pdf_path: Path, out_dir: Path) -> list[Figure]:

@@ -79,7 +79,6 @@ class LLMsConfig(BaseModel):
         return getattr(self, role)
 
 
-
 class SearchConfig(BaseModel):
     """Paper search/discovery configuration."""
 
@@ -206,6 +205,7 @@ def _migrate_legacy_llm(raw: dict[str, Any]) -> dict[str, Any]:
         return raw
     # Clone the flat config into all three roles.
     import copy
+
     raw["llms"] = {role: copy.deepcopy(flat) for role in _LLM_ROLES}
     logger.info(
         "Migrated legacy [llm] config to [llms.text/vision/searcher]. "

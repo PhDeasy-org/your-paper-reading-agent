@@ -22,10 +22,10 @@ class Storage:
     @staticmethod
     def _safe_filename(title: str, published_at: datetime | None = None) -> str:
         """Convert a paper title into a filesystem-safe directory name with YY-MM prefix."""
-        name = re.sub(r'[^\w\s-]', '', title)
-        name = re.sub(r'[\s_]+', '-', name.strip())
-        name = re.sub(r'-{2,}', '-', name)
-        name = name[:200] or 'untitled'
+        name = re.sub(r"[^\w\s-]", "", title)
+        name = re.sub(r"[\s_]+", "-", name.strip())
+        name = re.sub(r"-{2,}", "-", name)
+        name = name[:200] or "untitled"
         if published_at:
             prefix = published_at.strftime("%y-%m")
             return f"{prefix}-{name}"
@@ -41,7 +41,9 @@ class Storage:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def save_report(self, report: PaperReport, *, md_content: str = "", html_content: str = "") -> Path:
+    def save_report(
+        self, report: PaperReport, *, md_content: str = "", html_content: str = ""
+    ) -> Path:
         """Save a report's Markdown, HTML, and metadata to disk.
 
         Returns the path to the paper's output directory.
@@ -75,6 +77,4 @@ class Storage:
 
     def list_reports(self) -> list[Path]:
         """List previously generated report directories."""
-        return sorted(
-            p for p in self.output_dir.iterdir() if p.is_dir()
-        )
+        return sorted(p for p in self.output_dir.iterdir() if p.is_dir())

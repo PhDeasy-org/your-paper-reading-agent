@@ -33,7 +33,9 @@ def _load() -> AppConfig:
         return load_config()
     except FileNotFoundError as exc:
         console.print(f"[red]Error:[/red] {exc}")
-        console.print("Run [bold]ppagent config init[/bold] to create a default config.")
+        console.print(
+            "Run [bold]ppagent config init[/bold] to create a default config."
+        )
         raise typer.Exit(1)
 
 
@@ -68,13 +70,21 @@ def _normalize_paper_id(paper_id: str) -> str:
 @app.callback()
 def main_callback(
     version: bool = typer.Option(
-        False, "--version", "-V", callback=_version_callback, is_eager=True,
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
         help="Show version and exit.",
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable debug logging."
+    ),
 ) -> None:
     if verbose:
-        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s")
+        logging.basicConfig(
+            level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s"
+        )
     else:
         logging.basicConfig(level=logging.WARNING)
 
@@ -84,9 +94,15 @@ def main_callback(
 
 @app.command()
 def search(
-    date: Optional[str] = typer.Option(None, "--date", "-d", help="Paper date (YYYY-MM-DD or 'today')."),
-    limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max papers to fetch."),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Path to profile .md file."),
+    date: Optional[str] = typer.Option(
+        None, "--date", "-d", help="Paper date (YYYY-MM-DD or 'today')."
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Max papers to fetch."
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Path to profile .md file."
+    ),
 ) -> None:
     """Discover and rank papers based on your research profile."""
     from ppagent import hf
@@ -113,13 +129,17 @@ def search(
 
     if not cfg.profile_path.exists():
         console.print(f"[red]Profile not found:[/red] {cfg.profile_path}")
-        console.print("Edit [bold]config/profile.md[/bold] with your research interests.")
+        console.print(
+            "Edit [bold]config/profile.md[/bold] with your research interests."
+        )
         raise typer.Exit(1)
 
     profile_text = cfg.profile_path.read_text()
     llm = LLMClient(cfg.llms.searcher)
     searcher = SearcherAgent(llm, cfg)
-    with console.status("[dim]Scoring paper relevance via Searcher LLM...[/dim]", spinner="dots"):
+    with console.status(
+        "[dim]Scoring paper relevance via Searcher LLM...[/dim]", spinner="dots"
+    ):
         result = searcher.run(papers=papers, profile=profile_text)
 
     if not result.success:
@@ -130,7 +150,9 @@ def search(
     scores = result.data["scores"]
 
     if not matched:
-        console.print("[yellow]No papers matched your profile above the threshold.[/yellow]")
+        console.print(
+            "[yellow]No papers matched your profile above the threshold.[/yellow]"
+        )
         return
 
     table = Table(title=f"Matched Papers ({len(matched)})", show_lines=True)
@@ -153,10 +175,23 @@ def search(
 
 @app.command()
 def report(
-    paper_ids: list[str] = typer.Argument(..., help="Paper ID(s) (e.g. 2506.12345) or arXiv URL(s)."),
-    output_dir: Optional[str] = typer.Option(None, "--output", "-o", help="Output directory."),
-    force: bool = typer.Option(False, "--force", "-f", help="Regenerate without prompting if report already exists."),
-    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the report in the default browser after generation."),
+    paper_ids: list[str] = typer.Argument(
+        ..., help="Paper ID(s) (e.g. 2506.12345) or arXiv URL(s)."
+    ),
+    output_dir: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output directory."
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Regenerate without prompting if report already exists.",
+    ),
+    open_browser: bool = typer.Option(
+        True,
+        "--open/--no-open",
+        help="Open the report in the default browser after generation.",
+    ),
 ) -> None:
     """Generate detailed reports for specified papers."""
     from ppagent import hf
@@ -180,8 +215,12 @@ def report(
                 paper = hf.paper_info(paper_id)
             except Exception:
                 paper = None
-            if paper and pipeline.storage.report_exists(paper.title, paper.published_at):
-                if not typer.confirm(f"Report for \"{paper.title}\" already exists. Regenerate?"):
+            if paper and pipeline.storage.report_exists(
+                paper.title, paper.published_at
+            ):
+                if not typer.confirm(
+                    f'Report for "{paper.title}" already exists. Regenerate?'
+                ):
                     console.print("[yellow]Skipped.[/yellow]")
                     continue
 
@@ -192,14 +231,19 @@ def report(
             has_errors = True
             continue
 
-        report_dir = cfg.output_dir / Storage._safe_filename(paper_report.paper.title, paper_report.paper.published_at)
+        report_dir = cfg.output_dir / Storage._safe_filename(
+            paper_report.paper.title, paper_report.paper.published_at
+        )
         console.print(f"[green]Report generated![/green] Output: {report_dir}")
 
         if open_browser:
             html_path = report_dir / "report.html"
             if html_path.exists():
                 import webbrowser
-                console.print(f"Opening report for \"{paper_report.paper.title}\" in default browser...")
+
+                console.print(
+                    f'Opening report for "{paper_report.paper.title}" in default browser...'
+                )
                 webbrowser.open(html_path.resolve().as_uri())
 
     if has_errors:
@@ -212,10 +256,23 @@ def report(
 @app.command()
 def run(
     date: Optional[str] = typer.Option(None, "--date", "-d", help="Paper date."),
-    limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max papers to fetch."),
-    schedule: bool = typer.Option(False, "--schedule", "-s", help="Enable auto-fetch scheduler."),
-    force: bool = typer.Option(False, "--force", "-f", help="Regenerate without prompting if reports already exist."),
-    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the report in the default browser after generation."),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Max papers to fetch."
+    ),
+    schedule: bool = typer.Option(
+        False, "--schedule", "-s", help="Enable auto-fetch scheduler."
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Regenerate without prompting if reports already exist.",
+    ),
+    open_browser: bool = typer.Option(
+        True,
+        "--open/--no-open",
+        help="Open the report in the default browser after generation.",
+    ),
 ) -> None:
     """Run the full pipeline: search + report generation."""
     if schedule:
@@ -226,7 +283,9 @@ def run(
         pipeline = PaperPipeline(cfg)
         scheduler = PaperScheduler(cfg, pipeline)
         console.print("[bold]Starting scheduler...[/bold]")
-        console.print(f"  Cron: {cfg.scheduler.cron_hour:02d}:{cfg.scheduler.cron_minute:02d} ({cfg.scheduler.timezone})")
+        console.print(
+            f"  Cron: {cfg.scheduler.cron_hour:02d}:{cfg.scheduler.cron_minute:02d} ({cfg.scheduler.timezone})"
+        )
         console.print("  Press Ctrl+C to stop.\n")
         try:
             scheduler.start()
@@ -248,13 +307,16 @@ def run(
 
     console.print(f"\n[green]Done![/green] Generated {len(reports)} report(s).")
     for r in reports:
-        report_dir = cfg.output_dir / Storage._safe_filename(r.paper.title, r.paper.published_at)
+        report_dir = cfg.output_dir / Storage._safe_filename(
+            r.paper.title, r.paper.published_at
+        )
         console.print(f"  - {r.paper.title} → {report_dir}")
         if open_browser:
             html_path = report_dir / "report.html"
             if html_path.exists():
                 import webbrowser
-                console.print(f"Opening report for \"{r.paper.title}\" in browser...")
+
+                console.print(f'Opening report for "{r.paper.title}" in browser...')
                 webbrowser.open(html_path.resolve().as_uri())
 
 
@@ -266,6 +328,7 @@ def config_main(ctx: typer.Context) -> None:
     """Manage ppagent configuration."""
     if ctx.invoked_subcommand is None:
         from ppagent.tui import run_config_tui
+
         run_config_tui()
 
 
@@ -273,10 +336,18 @@ def config_main(ctx: typer.Context) -> None:
 def config_show() -> None:
     """Show current configuration."""
     cfg = _load()
-    console.print(f"[bold]Config loaded from:[/bold] {PROJECT_ROOT / 'config' / 'settings.toml'}")
-    console.print(f"  Text LLM (writer/finder/criticizer): {cfg.llms.text.model} @ {cfg.llms.text.base_url}")
-    console.print(f"  Vision LLM (figure_selector):       {cfg.llms.vision.model} @ {cfg.llms.vision.base_url}")
-    console.print(f"  Searcher LLM (paper scoring):        {cfg.llms.searcher.model} @ {cfg.llms.searcher.base_url}")
+    console.print(
+        f"[bold]Config loaded from:[/bold] {PROJECT_ROOT / 'config' / 'settings.toml'}"
+    )
+    console.print(
+        f"  Text LLM (writer/finder/criticizer): {cfg.llms.text.model} @ {cfg.llms.text.base_url}"
+    )
+    console.print(
+        f"  Vision LLM (figure_selector):       {cfg.llms.vision.model} @ {cfg.llms.vision.base_url}"
+    )
+    console.print(
+        f"  Searcher LLM (paper scoring):        {cfg.llms.searcher.model} @ {cfg.llms.searcher.base_url}"
+    )
     console.print(f"  Profile: {cfg.profile_path}")
     console.print(f"  Output: {cfg.output_dir}")
     console.print(f"  Language: {cfg.report.language}")
@@ -310,6 +381,7 @@ def config_init() -> None:
         "enable_thinking": False,
     }
     import copy
+
     default = {
         "llms": {
             # text & searcher default to the same model; vision must be a

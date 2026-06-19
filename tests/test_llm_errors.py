@@ -146,6 +146,90 @@ class TestCallWithRetry:
             body=exc.body,
         )
         client._client = MagicMock()
+        client._client.chat.completions.create.side_effect = auth_exc
+
+        with pytest.raises(RuntimeError, match="Authentication failed"):
+            client._call_with_retry({"model": "m", "messages": []})
+
+        # Should have been called exactly once — no retries for auth errors.
+        assert client._client.chat.completions.create.call_count == 1
+
+    def test_not_found_error_raises_immediately(self) -> None:
+        client = _make_client()
+        exc = _make_status_error(404, message="Model not found")
+        nf_exc = openai.NotFoundError(
+            message="Model not found",
+            response=exc.response,
+            body=exc.body,
+        )
+        client._client = MagicMock()
+        client._client.chat.completions.create.side_effect = nf_exc
+
+        with pytest.raises(RuntimeError, match="Model not found"):
+            client._call_with_retry({"model": "m", "messages": []})
+        assert client._client.chat.completions.create.call_count == 1
+
+    def test_bad_request_raises_immediately(self) -> None:
+        client = _make_client()
+        exc = _make_status_error(400, message="bad params")
+        br_exc = openai.BadRequestError(
+            message="bad params",
+            response=exc.response,
+            body=exc.body,
+        )
+        client._client = MagicMock()
+        client._client.chat.completions.create.side_effect = br_exc
+
+        with pytest.raises(RuntimeError, match="Bad request"):
+            client._call_with_retry({"model": "m", "messages": []})
+        assert client._client.chat.completions.create.call_count == 1
+
+    def test_transient_server_error_retries_then_raises(self) -> None:
+        client = _make_client()
+        exc = _make_status_error(500, message="Internal error")
+        ise_exc = openai.InternalServerError(
+            message="Internal error",
+            response=exc.response,
+            body=exc.body,
+        )
+        client._client = MagicMock()
+        client._client.chat.completions.create.side_effect = ise_exc
+
+        # Patch sleep so we don't wait
+        with patch("ppagent.llm.time.sleep"):
+            with pytest.raises(RuntimeError, match="server error"):
+                client._call_with_retry({"model": "m", "messages": []})
+
+        # Should have retried _MAX_RETRIES times (3)
+        assert client._client.chat.completions.create.call_count == 3
+
+    def test_transient_connection_error_retries_then_succeeds(self) -> None:
+        client = _make_client()
+        conn_exc = openai.APIConnectionError(request=httpx.Request("POST", "https://x"))
+        mock_resp = MagicMock()
+        mock_resp.output_text = "success content"
+        mock_resp.citations = None
+
+        client._client = MagicMock()
+        client._client.chat.completions.create.side_effect = [conn_exc, mock_resp]
+
+        with patch("ppagent.llm.time.sleep"):
+            result = client._call_with_retry({"model": "m", "messages": []})
+
+        assert result is mock_resp
+        assert client._client.chat.completions.create.call_count == 2
+
+
+class TestCallWithRetryResponses:
+    def test_auth_error_raises_immediately_without_retry(self) -> None:
+        client = _make_client(base_url="https://api.openai.com/v1")
+        exc = _make_status_error(401, message="Invalid Authentication")
+        auth_exc = openai.AuthenticationError(
+            message="Invalid Authentication",
+            response=exc.response,
+            body=exc.body,
+        )
+        client._client = MagicMock()
         client._client.responses.create.side_effect = auth_exc
 
         with pytest.raises(RuntimeError, match="Authentication failed"):
@@ -155,7 +239,7 @@ class TestCallWithRetry:
         assert client._client.responses.create.call_count == 1
 
     def test_not_found_error_raises_immediately(self) -> None:
-        client = _make_client()
+        client = _make_client(base_url="https://api.openai.com/v1")
         exc = _make_status_error(404, message="Model not found")
         nf_exc = openai.NotFoundError(
             message="Model not found",
@@ -170,7 +254,7 @@ class TestCallWithRetry:
         assert client._client.responses.create.call_count == 1
 
     def test_bad_request_raises_immediately(self) -> None:
-        client = _make_client()
+        client = _make_client(base_url="https://api.openai.com/v1")
         exc = _make_status_error(400, message="bad params")
         br_exc = openai.BadRequestError(
             message="bad params",
@@ -185,7 +269,7 @@ class TestCallWithRetry:
         assert client._client.responses.create.call_count == 1
 
     def test_transient_server_error_retries_then_raises(self) -> None:
-        client = _make_client()
+        client = _make_client(base_url="https://api.openai.com/v1")
         exc = _make_status_error(500, message="Internal error")
         ise_exc = openai.InternalServerError(
             message="Internal error",
@@ -204,7 +288,7 @@ class TestCallWithRetry:
         assert client._client.responses.create.call_count == 3
 
     def test_transient_connection_error_retries_then_succeeds(self) -> None:
-        client = _make_client()
+        client = _make_client(base_url="https://api.openai.com/v1")
         conn_exc = openai.APIConnectionError(request=httpx.Request("POST", "https://x"))
         mock_resp = MagicMock()
         mock_resp.output_text = "success content"

@@ -6,6 +6,7 @@ import base64
 import time
 import logging
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from ppagent.config import LLMConfig
 from ppagent.providers import (
     detect_provider,
     is_reasoning_model,
+    supports_responses_api_for,
     thinking_extra_body_for,
 )
 
@@ -24,6 +26,57 @@ logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 3
 _RETRY_BACKOFF = 2  # seconds, doubles each retry
+
+
+@dataclass
+class _CompatToolCall:
+    id: str
+    call_id: str
+    name: str
+    arguments: str
+    type: str = "function_call"
+
+
+class LLMResponse:
+    """Unified wrapper around OpenAI ChatCompletion or Response."""
+
+    def __init__(self, raw: Any) -> None:
+        self.raw = raw
+
+    @property
+    def output_text(self) -> str:
+        if hasattr(self.raw, "output_text"):
+            return self.raw.output_text
+        try:
+            return self.raw.choices[0].message.content or ""
+        except (AttributeError, IndexError):
+            return ""
+
+    @property
+    def output(self) -> list[Any]:
+        if hasattr(self.raw, "output"):
+            return self.raw.output
+        items = []
+        try:
+            message = self.raw.choices[0].message
+            if message.tool_calls:
+                for call in message.tool_calls:
+                    items.append(
+                        _CompatToolCall(
+                            id=call.id,
+                            call_id=call.id,
+                            name=call.function.name,
+                            arguments=call.function.arguments,
+                            type="function_call",
+                        )
+                    )
+        except (AttributeError, IndexError):
+            pass
+        return items
+
+    @property
+    def usage(self) -> Any:
+        return self.raw.usage
 
 
 class LLMClient:
@@ -36,6 +89,7 @@ class LLMClient:
             api_key=config.api_key,
             timeout=config.timeout,
         )
+        self.use_responses = supports_responses_api_for(config.base_url)
         self._mode = self._resolve_instructor_mode()
         self._instructor = instructor.from_openai(self._client, mode=self._mode)
         self._thread_local = threading.local()
@@ -88,20 +142,28 @@ class LLMClient:
                     self.config.model,
                 )
                 return instructor.Mode.MD_JSON
-            return instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS
+            if self.use_responses:
+                return instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS
+            return instructor.Mode.TOOLS
 
         mapping = {
-            "tools": instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS,
+            "tools": instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS
+            if self.use_responses
+            else instructor.Mode.TOOLS,
             "json": instructor.Mode.JSON,
             "md_json": instructor.Mode.MD_JSON,
             "json_schema": instructor.Mode.JSON_SCHEMA,
         }
         if mode_str not in mapping:
             logger.warning(
-                "Unknown instructor_mode '%s', falling back to RESPONSES_TOOLS_WITH_INBUILT_TOOLS",
+                "Unknown instructor_mode '%s', falling back to TOOLS/RESPONSES_TOOLS_WITH_INBUILT_TOOLS",
                 self.config.instructor_mode,
             )
-            return instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS
+            return (
+                instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS
+                if self.use_responses
+                else instructor.Mode.TOOLS
+            )
         return mapping[mode_str]
 
     def _thinking_kwargs(self) -> dict[str, Any]:
@@ -140,16 +202,26 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> openai.types.responses.Response:
+    ) -> LLMResponse:
         """Raw chat completion, optionally with tool definitions."""
-        kwargs: dict[str, Any] = {
-            "model": self.config.model,
-            "input": messages,
-            "temperature": temperature
-            if temperature is not None
-            else self.config.temperature,
-            "max_output_tokens": self._clamp_max_tokens(max_tokens),
-        }
+        if self.use_responses:
+            kwargs: dict[str, Any] = {
+                "model": self.config.model,
+                "input": messages,
+                "temperature": temperature
+                if temperature is not None
+                else self.config.temperature,
+                "max_output_tokens": self._clamp_max_tokens(max_tokens),
+            }
+        else:
+            kwargs: dict[str, Any] = {
+                "model": self.config.model,
+                "messages": messages,
+                "temperature": temperature
+                if temperature is not None
+                else self.config.temperature,
+                "max_tokens": self._clamp_max_tokens(max_tokens),
+            }
         thinking = self._thinking_kwargs()
         if thinking:
             kwargs.update(thinking)
@@ -160,7 +232,7 @@ class LLMClient:
             kwargs["tools"] = tools
         resp = self._call_with_retry(kwargs)
         self._record_usage(resp.usage)
-        return resp
+        return LLMResponse(resp)
 
     def chat_structured(
         self,
@@ -317,10 +389,8 @@ class LLMClient:
         openai.BadRequestError,
     )
 
-    def _call_with_retry(
-        self, kwargs: dict[str, Any]
-    ) -> openai.types.responses.Response:
-        """Call the OpenAI API with exponential backoff on transient errors.
+    def _call_with_retry(self, kwargs: dict[str, Any]) -> Any:
+        """Call the LLM API with exponential backoff on transient errors.
 
         Non-transient errors (401, 403, 404, 400) are raised immediately with
         an actionable message so the user knows exactly what to fix.
@@ -329,7 +399,10 @@ class LLMClient:
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
-                resp = self._client.responses.create(**kwargs)
+                if self.use_responses:
+                    resp = self._client.responses.create(**kwargs)
+                else:
+                    resp = self._client.chat.completions.create(**kwargs)
                 return resp
             except self._NON_RETRYABLE as exc:
                 # Auth, permission, not-found, bad-request: do not retry.

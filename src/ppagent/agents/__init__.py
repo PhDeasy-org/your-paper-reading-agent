@@ -65,4 +65,3 @@ from ppagent.agents.finder import FinderAgent  # noqa: F401, E402
 from ppagent.agents.criticizer import CriticizerAgent  # noqa: F401, E402
 from ppagent.agents.figure_selector import FigureSelectorAgent  # noqa: F401, E402
 from ppagent.agents.classifier import ClassifierAgent  # noqa: F401, E402
-

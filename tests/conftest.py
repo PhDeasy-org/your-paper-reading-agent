@@ -32,10 +32,18 @@ def sample_paper() -> Paper:
 def sample_report(sample_paper: Paper) -> PaperReport:
     return PaperReport(
         paper=sample_paper,
-        metadata=ReportSection(name="metadata", content="| **Paper** | [arXiv:2506.12345] |"),
+        metadata=ReportSection(
+            name="metadata", content="| **Paper** | [arXiv:2506.12345] |"
+        ),
         benchmarks=ReportSection(name="benchmarks", content="WMT 2014, PTB"),
-        tldr=ReportSection(name="tldr", content="The Transformer model uses $Q$, $K$, $V$ matrices for self-attention."),
-        previous_works=ReportSection(name="previous_works", content="Prior work on [RNNs](https://arxiv.org/abs/1409.0473) and CNNs."),
+        tldr=ReportSection(
+            name="tldr",
+            content="The Transformer model uses $Q$, $K$, $V$ matrices for self-attention.",
+        ),
+        previous_works=ReportSection(
+            name="previous_works",
+            content="Prior work on [RNNs](https://arxiv.org/abs/1409.0473) and CNNs.",
+        ),
         method=ReportSection(
             name="method",
             content=(
@@ -49,9 +57,15 @@ def sample_report(sample_paper: Paper) -> PaperReport:
             name="evaluation",
             content="BLEU score of $28.4$ on WMT 2014 EN-DE, surpassing all previous models by $+2.0$ BLEU.",
         ),
-        critique=ReportSection(name="critique", content="Solid work but limited to sequence-to-sequence tasks."),
+        critique=ReportSection(
+            name="critique",
+            content="Solid work but limited to sequence-to-sequence tasks.",
+        ),
         related_works=[
-            Paper(id="2506.99999", title="BERT: Pre-training of Deep Bidirectional Transformers"),
+            Paper(
+                id="2506.99999",
+                title="BERT: Pre-training of Deep Bidirectional Transformers",
+            ),
         ],
         generated_at=datetime(2025, 6, 13, 12, 0),
         model_used="gpt-4o",
