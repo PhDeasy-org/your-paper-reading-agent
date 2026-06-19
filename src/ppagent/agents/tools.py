@@ -21,8 +21,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Callable
+
+from openai import OpenAI
 
 from ppagent.agents.base import ToolDef
 from ppagent import hf
@@ -66,7 +69,7 @@ def _search_papers(query: str, limit: int = 5) -> str:
                 "id": p.id,
                 "title": p.title,
                 "upvotes": p.upvotes,
-                "summary": p.summary[:200] if p.summary else "",
+                "summary": p.summary[:300] if p.summary else "",
             }
             for p in papers
         ]
@@ -85,7 +88,7 @@ def _paper_info(paper_id: str) -> str:
                 "title": paper.title,
                 "authors": paper.authors,
                 "upvotes": paper.upvotes,
-                "summary": paper.summary[:500] if paper.summary else "",
+                "summary": paper.summary[:800] if paper.summary else "",
             },
             indent=2,
         )
@@ -93,19 +96,36 @@ def _paper_info(paper_id: str) -> str:
         return f"Paper info failed: {exc}"
 
 
+def _read_paper(paper_id: str) -> str:
+    """Read the full markdown text of a paper, truncated to fit context."""
+    try:
+        markdown = hf.paper_read(paper_id)
+        max_chars = 8000
+        if len(markdown) > max_chars:
+            markdown = markdown[:max_chars] + "\n\n... [truncated]"
+        return markdown
+    except Exception as exc:
+        return f"Read paper failed: {exc}"
+
+
 HF_SEARCH_PAPERS = AgentTool(
     definition=ToolDef(
         name="search_papers",
         description=(
             "Search for papers on HuggingFace by query string. "
-            "Returns a list of papers with IDs, titles, and upvotes."
+            "Use this to look up unfamiliar concepts, methods, architectures, "
+            "benchmarks, or datasets. "
+            "Returns a list of papers with IDs, titles, and summaries."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query (e.g., method name, topic, benchmark name).",
+                    "description": (
+                        "Search query (e.g., method name, concept, benchmark, "
+                        "dataset, or cited work title)."
+                    ),
                 },
                 "limit": {
                     "type": "integer",
@@ -122,7 +142,11 @@ HF_SEARCH_PAPERS = AgentTool(
 HF_PAPER_INFO = AgentTool(
     definition=ToolDef(
         name="paper_info",
-        description="Get detailed info about a specific paper by its arXiv ID.",
+        description=(
+            "Get detailed metadata and abstract for a specific paper by its arXiv ID. "
+            "Use this to quickly understand what a cited paper is about without "
+            "reading its full text."
+        ),
         parameters={
             "type": "object",
             "properties": {
@@ -137,5 +161,85 @@ HF_PAPER_INFO = AgentTool(
     handler=_paper_info,
 )
 
+HF_READ_PAPER = AgentTool(
+    definition=ToolDef(
+        name="read_paper",
+        description=(
+            "Read the full text (as markdown) of a specific paper by its arXiv ID. "
+            "Use this when you need deep context about a cited paper's method, "
+            "architecture, or findings — not just its abstract. "
+            "Prefer paper_info for quick lookups; use read_paper when the abstract "
+            "alone is not enough."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "paper_id": {
+                    "type": "string",
+                    "description": "The arXiv paper ID (e.g., '2301.08210').",
+                },
+            },
+            "required": ["paper_id"],
+        },
+    ),
+    handler=_read_paper,
+)
+
 #: Convenience bundle — all HuggingFace paper tools.
-HF_TOOLS: list[AgentTool] = [HF_SEARCH_PAPERS, HF_PAPER_INFO]
+HF_TOOLS: list[AgentTool] = [HF_SEARCH_PAPERS, HF_PAPER_INFO, HF_READ_PAPER]
+
+
+def _web_search(query: str) -> str:
+    """Search the web in real-time using xAI's Grok model with native web search.
+
+    Use this to search the internet for related papers, blog posts, code,
+    benchmarks, or other general web information.
+    """
+    api_key = os.environ.get("XAI_API_KEY")
+    if not api_key:
+        return "Error: XAI_API_KEY environment variable is not set."
+
+    try:
+        client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
+        response = client.chat.completions.create(
+            model="grok-2-latest",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful search assistant. Use the web search tool to find detailed, accurate information for the user's query.",
+                },
+                {"role": "user", "content": query},
+            ],
+            tools=[{"type": "web_search"}],
+        )
+        content = response.choices[0].message.content or ""
+        citations = getattr(response.choices[0].message, "citations", None)
+        if citations:
+            content += "\n\nCitations:\n" + "\n".join(f"- {c}" for c in citations)
+        return content
+    except Exception as exc:
+        return f"Web search failed: {exc}"
+
+
+XAI_WEB_SEARCH = AgentTool(
+    definition=ToolDef(
+        name="web_search",
+        description=(
+            "Search the web in real-time for any information. "
+            "Use this to look up related papers, authors, github repositories, "
+            "blog posts, explanations of concepts, benchmarks, or datasets. "
+            "Returns a detailed summary of search results with sources."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query to look up on the internet.",
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+    handler=_web_search,
+)
