@@ -63,7 +63,7 @@ class AgentBase(ABC):
         if response_model:
             return self.llm.chat_structured(messages, response_model)
         resp = self.llm.chat(messages)
-        return resp.choices[0].message.content or ""
+        return resp.output_text
 
 
 class AgentWithTools(AgentBase):
@@ -114,18 +114,17 @@ class AgentWithTools(AgentBase):
 
         for iteration in range(max_iterations):
             resp = self.llm.chat(messages, tools=tool_defs if tool_defs else None)
-            choice = resp.choices[0]
 
-            if not choice.message.tool_calls:
-                return choice.message.content or ""
+            tool_calls = [item for item in resp.output if item.type == "function_call"]
+            if not tool_calls:
+                return resp.output_text
 
-            # Append the assistant message with tool calls
-            messages.append(choice.message.model_dump())
+            messages.extend(resp.output)
 
-            for call in choice.message.tool_calls:
-                fn_name = call.function.name
+            for call in tool_calls:
+                fn_name = call.name
                 try:
-                    fn_args = json.loads(call.function.arguments)
+                    fn_args = json.loads(call.arguments)
                 except json.JSONDecodeError:
                     fn_args = {}
 
@@ -137,9 +136,9 @@ class AgentWithTools(AgentBase):
 
                 messages.append(
                     {
-                        "role": "tool",
-                        "content": str(result),
-                        "tool_call_id": call.id,
+                        "type": "function_call_output",
+                        "call_id": call.call_id,
+                        "output": str(result),
                     }
                 )
 
@@ -147,8 +146,8 @@ class AgentWithTools(AgentBase):
                 "Tool iteration %d/%d: called %d tools",
                 iteration + 1,
                 max_iterations,
-                len(choice.message.tool_calls),
+                len(tool_calls),
             )
 
         # If we exhausted iterations, return last content
-        return resp.choices[0].message.content or ""
+        return resp.output_text

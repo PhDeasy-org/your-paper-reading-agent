@@ -9,11 +9,10 @@ so the final analysis is more accurate and thorough.
 
 from __future__ import annotations
 
-import json
 import logging
 
 from ppagent.agents import register_agent
-from ppagent.agents.base import AgentWithTools, ToolDef
+from ppagent.agents.base import AgentWithTools
 from ppagent.agents.prompts import (
     WRITER_RESEARCH_SYSTEM_PROMPT,
     WRITER_RESEARCH_USER_PROMPT_TEMPLATE,
@@ -22,8 +21,8 @@ from ppagent.agents.prompts import (
     WRITER_WITH_RESEARCH_USER_PROMPT_TEMPLATE,
     DEFAULT_PAPER_TYPE,
 )
+from ppagent.agents.tools import HF_TOOLS
 from ppagent.llm import LLMClient
-from ppagent import hf
 from ppagent.models import AgentResult, PaperContent, WriterOutput
 
 logger = logging.getLogger(__name__)
@@ -44,123 +43,7 @@ class WriterAgent(AgentWithTools):
 
     def __init__(self, llm: LLMClient, config) -> None:
         super().__init__(llm, config)
-        self.tools = [
-            ToolDef(
-                name="search_papers",
-                description=(
-                    "Search for papers on HuggingFace by query string. "
-                    "Use this to look up unfamiliar concepts, methods, architectures, "
-                    "benchmarks, or datasets mentioned in the paper. "
-                    "Returns a list of papers with IDs, titles, and summaries."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": (
-                                "Search query (e.g., method name, concept, benchmark, "
-                                "dataset, or cited work title)."
-                            ),
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Max number of results (default 5).",
-                            "default": 5,
-                        },
-                    },
-                    "required": ["query"],
-                },
-            ),
-            ToolDef(
-                name="paper_info",
-                description=(
-                    "Get detailed metadata and abstract for a specific paper by its arXiv ID. "
-                    "Use this to quickly understand what a cited paper is about without "
-                    "reading its full text."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "paper_id": {
-                            "type": "string",
-                            "description": "The arXiv paper ID (e.g., '2301.08210').",
-                        },
-                    },
-                    "required": ["paper_id"],
-                },
-            ),
-            ToolDef(
-                name="read_paper",
-                description=(
-                    "Read the full text (as markdown) of a specific paper by its arXiv ID. "
-                    "Use this when you need deep context about a cited paper's method, "
-                    "architecture, or findings — not just its abstract. "
-                    "Prefer paper_info for quick lookups; use read_paper when the abstract "
-                    "alone is not enough."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "paper_id": {
-                            "type": "string",
-                            "description": "The arXiv paper ID (e.g., '2301.08210').",
-                        },
-                    },
-                    "required": ["paper_id"],
-                },
-            ),
-        ]
-
-    # --------------------------------------------------------------------- #
-    # Tool handlers                                                           #
-    # --------------------------------------------------------------------- #
-
-    def _tool_search_papers(self, query: str, limit: int = 5) -> str:
-        try:
-            papers = hf.search_papers(query, limit=limit)
-            if not papers:
-                return "No papers found."
-            results = []
-            for p in papers:
-                results.append(
-                    {
-                        "id": p.id,
-                        "title": p.title,
-                        "upvotes": p.upvotes,
-                        "summary": p.summary[:300] if p.summary else "",
-                    }
-                )
-            return json.dumps(results, indent=2)
-        except Exception as exc:
-            return f"Search failed: {exc}"
-
-    def _tool_paper_info(self, paper_id: str) -> str:
-        try:
-            paper = hf.paper_info(paper_id)
-            return json.dumps(
-                {
-                    "id": paper.id,
-                    "title": paper.title,
-                    "authors": paper.authors,
-                    "upvotes": paper.upvotes,
-                    "summary": paper.summary[:800] if paper.summary else "",
-                },
-                indent=2,
-            )
-        except Exception as exc:
-            return f"Paper info failed: {exc}"
-
-    def _tool_read_paper(self, paper_id: str) -> str:
-        try:
-            markdown = hf.paper_read(paper_id)
-            # Truncate to avoid overwhelming the context window.
-            max_chars = 8000
-            if len(markdown) > max_chars:
-                markdown = markdown[:max_chars] + "\n\n... [truncated]"
-            return markdown
-        except Exception as exc:
-            return f"Read paper failed: {exc}"
+        self.agent_tools = list(HF_TOOLS)
 
     # --------------------------------------------------------------------- #
     # Research phase                                                          #
