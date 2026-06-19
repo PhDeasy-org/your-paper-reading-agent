@@ -22,6 +22,7 @@ from ppagent.agents.prompts import (
     DEFAULT_PAPER_TYPE,
 )
 from ppagent.agents.tools import HF_TOOLS
+from ppagent.config import AppConfig
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, PaperContent, WriterOutput
 
@@ -41,7 +42,7 @@ class WriterAgent(AgentWithTools):
     name = "writer"
     description = "Analyzes paper content and produces structured report sections."
 
-    def __init__(self, llm: LLMClient, config) -> None:
+    def __init__(self, llm: LLMClient, config: AppConfig) -> None:
         super().__init__(llm, config)
         self.agent_tools = list(HF_TOOLS)
 
@@ -83,7 +84,9 @@ class WriterAgent(AgentWithTools):
     # Main entry point                                                        #
     # --------------------------------------------------------------------- #
 
-    def run(self, *, content: PaperContent, paper_type: str = DEFAULT_PAPER_TYPE) -> AgentResult:
+    def run(
+        self, *, content: PaperContent, paper_type: str = DEFAULT_PAPER_TYPE
+    ) -> AgentResult:
         self.llm.reset_usage()
 
         # Phase 1: research (optional)
@@ -129,7 +132,9 @@ class WriterAgent(AgentWithTools):
             )
 
         try:
-            system_prompt = WRITER_SYSTEM_PROMPTS.get(paper_type, WRITER_SYSTEM_PROMPTS[DEFAULT_PAPER_TYPE])
+            system_prompt = WRITER_SYSTEM_PROMPTS.get(
+                paper_type, WRITER_SYSTEM_PROMPTS[DEFAULT_PAPER_TYPE]
+            )
             lang = self.config.report.language
             if lang and lang.lower() != "english":
                 system_prompt += (
