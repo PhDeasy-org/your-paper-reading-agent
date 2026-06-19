@@ -9,13 +9,17 @@ from ppagent.providers import (
     get_provider,
 )
 
+
 def test_detect_vendor():
     # Test standard vendors
     assert detect_vendor("https://api.openai.com/v1") == "openai"
     assert detect_vendor("https://api.deepseek.com") == "deepseek"
     assert detect_vendor("https://api.deepseek.com/v1") == "deepseek"
     assert detect_vendor("https://api.mistral.ai/v1") == "mistral"
-    assert detect_vendor("https://generativelanguage.googleapis.com/v1beta/openai") == "gemini"
+    assert (
+        detect_vendor("https://generativelanguage.googleapis.com/v1beta/openai")
+        == "gemini"
+    )
     assert detect_vendor("https://api.anthropic.com/v1") == "anthropic"
     assert detect_vendor("https://dashscope.aliyuncs.com/compatible-mode/v1") == "qwen"
     assert detect_vendor("https://api.moonshot.ai/v1") == "kimi_ai"
@@ -33,6 +37,7 @@ def test_detect_vendor():
     assert detect_vendor(None) == "custom"
     assert detect_vendor("") == "custom"
 
+
 def test_get_menu_definition_vendor_list():
     cfg = AppConfig()
     # Set text LLM base URL to deepseek
@@ -42,12 +47,32 @@ def test_get_menu_definition_vendor_list():
     assert len(menu_items) == len(PROVIDERS) + 1  # PROVIDERS plus back menu item
 
     # Check that DeepSeek has the active label
-    deepseek_item = next(item for item in menu_items if "deepseek" in (item.target or ""))
+    deepseek_item = next(
+        item for item in menu_items if "deepseek" in (item.target or "")
+    )
     assert "Active" in deepseek_item.label
 
     # Check that OpenAI is not active
     openai_item = next(item for item in menu_items if "openai" in (item.target or ""))
     assert "Active" not in openai_item.label
+
+
+def test_get_menu_definition_vendor_list_searcher():
+    cfg = AppConfig()
+    menu_items = get_menu_definition("llm_searcher_vendor", cfg)
+
+    # 4 providers (openai, qwen, doubao, grok) + 1 back item = 5 items
+    assert len(menu_items) == 5
+
+    # Verify exact provider targets are present
+    targets = {item.target for item in menu_items if item.target != "back"}
+    assert targets == {
+        "llm_searcher_openai",
+        "llm_searcher_qwen",
+        "llm_searcher_doubao",
+        "llm_searcher_grok",
+    }
+
 
 def test_get_menu_definition_vendor_setting():
     cfg = AppConfig()
@@ -140,6 +165,7 @@ def test_snapshot_active_vendor_then_save_persists_active_edits(tmp_path):
 
     # Reload and verify the TOML round-trips saved_vendors correctly.
     import tomllib
+
     with open(config_file, "rb") as f:
         raw = tomllib.load(f)
     assert raw["llms"]["saved_vendors"]["text"]["deepseek"]["api_key"] == "deepseek-key"
@@ -161,4 +187,3 @@ def test_vision_and_searcher_roles_independent():
     # Each role retains its own active provider.
     assert cfg.llms.vision.api_key == "glm-vision-key"
     assert cfg.llms.searcher.api_key == "ds-searcher-key"
-

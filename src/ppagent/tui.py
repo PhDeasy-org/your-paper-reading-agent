@@ -16,7 +16,13 @@ from rich.text import Text
 
 import typer
 
-from ppagent.config import AppConfig, load_config, PROJECT_ROOT, _DEFAULT_CONFIG_PATHS, _LLM_ROLES
+from ppagent.config import (
+    AppConfig,
+    load_config,
+    PROJECT_ROOT,
+    _DEFAULT_CONFIG_PATHS,
+    _LLM_ROLES,
+)
 from ppagent.cli import config_init
 from ppagent.providers import PROVIDERS, detect_provider, get_provider
 
@@ -35,7 +41,7 @@ class MenuItem:
     ):
         self.label = label
         self.target = target  # Submenu name or action ('save', 'discard', 'back')
-        self.key = key        # Configuration key path (if config option)
+        self.key = key  # Configuration key path (if config option)
         self.val_type = val_type
         self.secret = secret
         self.description = description
@@ -56,6 +62,7 @@ def _snapshot_active_vendor(cfg: AppConfig, role: str) -> str:
     """
     from ppagent.config import LLMConfig
     import copy
+
     active: LLMConfig = getattr(cfg.llms, role)
     vendor_key = detect_provider(active.base_url)
     cfg.llms.saved_vendors.setdefault(role, {})[vendor_key] = copy.deepcopy(active)
@@ -74,6 +81,7 @@ def _switch_vendor(cfg: AppConfig, role: str, vendor_key: str) -> None:
     """
     from ppagent.config import LLMConfig
     import copy
+
     active = getattr(cfg.llms, role)
     active_vendor = detect_provider(active.base_url)
     if active_vendor == vendor_key:
@@ -108,82 +116,299 @@ def _llm_submenu_items(role: str, vendor_key: str) -> list[MenuItem]:
         MenuItem("<- Back to Providers", target="back"),
     ]
     if vendor_key == "custom":
-        items.append(MenuItem("API Base URL", key=f"{prefix}.base_url", val_type=str, description="Endpoint URL for the LLM API provider."))
+        items.append(
+            MenuItem(
+                "API Base URL",
+                key=f"{prefix}.base_url",
+                val_type=str,
+                description="Endpoint URL for the LLM API provider.",
+            )
+        )
 
-    items.extend([
-        MenuItem("API Key", key=f"{prefix}.api_key", val_type=str, secret=True, description="Authentication key for the LLM API."),
-        MenuItem("Model Name", key=f"{prefix}.model", val_type=str, description="Target model (e.g. gpt-4o, deepseek-chat)."),
-        MenuItem("Temperature", key=f"{prefix}.temperature", val_type=float, description="LLM sampling temperature (higher is more creative)."),
-        MenuItem("Max Tokens", key=f"{prefix}.max_tokens", val_type=int, description="Max tokens generated in each API response."),
-        MenuItem("Timeout", key=f"{prefix}.timeout", val_type=int, description="HTTP request timeout in seconds."),
-        MenuItem("Instructor Mode", key=f"{prefix}.instructor_mode", val_type=str, description="Structured output mode: auto, json, tool_call, etc."),
-        MenuItem("Enable Thinking", key=f"{prefix}.enable_thinking", val_type=bool, description="Enable extended reasoning (uses model's default thinking budget)."),
-    ])
+    items.extend(
+        [
+            MenuItem(
+                "API Key",
+                key=f"{prefix}.api_key",
+                val_type=str,
+                secret=True,
+                description="Authentication key for the LLM API.",
+            ),
+            MenuItem(
+                "Model Name",
+                key=f"{prefix}.model",
+                val_type=str,
+                description="Target model (e.g. gpt-4o, deepseek-chat).",
+            ),
+            MenuItem(
+                "Temperature",
+                key=f"{prefix}.temperature",
+                val_type=float,
+                description="LLM sampling temperature (higher is more creative).",
+            ),
+            MenuItem(
+                "Max Tokens",
+                key=f"{prefix}.max_tokens",
+                val_type=int,
+                description="Max tokens generated in each API response.",
+            ),
+            MenuItem(
+                "Timeout",
+                key=f"{prefix}.timeout",
+                val_type=int,
+                description="HTTP request timeout in seconds.",
+            ),
+            MenuItem(
+                "Instructor Mode",
+                key=f"{prefix}.instructor_mode",
+                val_type=str,
+                description="Structured output mode: auto, json, tool_call, etc.",
+            ),
+            MenuItem(
+                "Enable Thinking",
+                key=f"{prefix}.enable_thinking",
+                val_type=bool,
+                description="Enable extended reasoning (uses model's default thinking budget).",
+            ),
+        ]
+    )
     return items
 
 
 MENUS: dict[str, list[MenuItem]] = {
     "main": [
-        MenuItem("LLM API Settings", target="llms", description="Configure per-role LLM providers: text (writer/finder/criticizer), vision (figure selector), searcher (paper scoring)."),
-        MenuItem("Search & Discovery Settings", target="search", description="Configure default date, fetching limits, and relevance matching."),
-        MenuItem("Report Settings", target="report", description="Configure report directories, formats, and output language."),
-        MenuItem("Scheduler Settings", target="scheduler", description="Configure cron-like background paper discovery times."),
-        MenuItem("Publishing Settings", target="publish", description="Configure destinations to share discovered papers (Notion, WeChat, Blog)."),
+        MenuItem(
+            "LLM API Settings",
+            target="llms",
+            description="Configure per-role LLM providers: text (writer/finder/criticizer), vision (figure selector), searcher (paper scoring).",
+        ),
+        MenuItem(
+            "Search & Discovery Settings",
+            target="search",
+            description="Configure default date, fetching limits, and relevance matching.",
+        ),
+        MenuItem(
+            "Report Settings",
+            target="report",
+            description="Configure report directories, formats, and output language.",
+        ),
+        MenuItem(
+            "Scheduler Settings",
+            target="scheduler",
+            description="Configure cron-like background paper discovery times.",
+        ),
+        MenuItem(
+            "Publishing Settings",
+            target="publish",
+            description="Configure destinations to share discovered papers (Notion, WeChat, Blog).",
+        ),
     ],
     "llms": [
         MenuItem("<- Back to Main Menu", target="back"),
-        MenuItem("Text LLM (writer/finder/criticizer)", target="llm_text_vendor", description="LLM used by the writer, finder, and criticizer agents for paper analysis."),
-        MenuItem("Vision LLM (figure selector)", target="llm_vision_vendor", description="Vision-capable LLM used by the figure_selector agent to pick pipeline diagrams."),
-        MenuItem("Searcher LLM (paper scoring)", target="llm_searcher_vendor", description="LLM used by the searcher agent to score paper relevance to your profile."),
+        MenuItem(
+            "Text LLM (writer/finder/criticizer)",
+            target="llm_text_vendor",
+            description="LLM used by the writer, finder, and criticizer agents for paper analysis.",
+        ),
+        MenuItem(
+            "Vision LLM (figure selector)",
+            target="llm_vision_vendor",
+            description="Vision-capable LLM used by the figure_selector agent to pick pipeline diagrams.",
+        ),
+        MenuItem(
+            "Searcher LLM (paper scoring)",
+            target="llm_searcher_vendor",
+            description="LLM used by the searcher agent to score paper relevance to your profile.",
+        ),
     ],
     "search": [
         MenuItem("<- Back to Main Menu", target="back"),
-        MenuItem("Default Date", key="search.default_date", val_type=str, description="Default papers date (YYYY-MM-DD or 'today')."),
-        MenuItem("Default Limit", key="search.default_limit", val_type=int, description="Default max number of papers to fetch."),
-        MenuItem("Sort Order", key="search.sort", val_type=str, description="ArXiv sorting option (trending, recent)."),
-        MenuItem("Profile Path", key="search.profile_path", val_type=str, description="Markdown file containing user research profile/interests."),
-        MenuItem("Relevance Threshold", key="search.relevance_threshold", val_type=float, description="Threshold (0.0 to 1.0) above which papers are selected."),
-        MenuItem("Max Reports per Run", key="search.max_reports_per_run", val_type=int, description="Limits maximum paper reports created per pipeline run."),
+        MenuItem(
+            "Default Date",
+            key="search.default_date",
+            val_type=str,
+            description="Default papers date (YYYY-MM-DD or 'today').",
+        ),
+        MenuItem(
+            "Default Limit",
+            key="search.default_limit",
+            val_type=int,
+            description="Default max number of papers to fetch.",
+        ),
+        MenuItem(
+            "Sort Order",
+            key="search.sort",
+            val_type=str,
+            description="ArXiv sorting option (trending, recent).",
+        ),
+        MenuItem(
+            "Profile Path",
+            key="search.profile_path",
+            val_type=str,
+            description="Markdown file containing user research profile/interests.",
+        ),
+        MenuItem(
+            "Relevance Threshold",
+            key="search.relevance_threshold",
+            val_type=float,
+            description="Threshold (0.0 to 1.0) above which papers are selected.",
+        ),
+        MenuItem(
+            "Max Reports per Run",
+            key="search.max_reports_per_run",
+            val_type=int,
+            description="Limits maximum paper reports created per pipeline run.",
+        ),
     ],
     "report": [
         MenuItem("<- Back to Main Menu", target="back"),
-        MenuItem("Output Directory", key="report.output_dir", val_type=str, description="Folder to save generated reports."),
-        MenuItem("Template Directory", key="report.template_dir", val_type=str, description="Folder containing custom Jinja2 templates."),
-        MenuItem("Download PDF", key="report.download_pdf", val_type=bool, description="Download and cache paper PDFs locally."),
-        MenuItem("PDF Cache Directory", key="report.pdf_cache_dir", val_type=str, description="Folder where downloaded PDFs are cached."),
-        MenuItem("Language", key="report.language", val_type=str, description="Language to write the paper summaries/reports in."),
+        MenuItem(
+            "Output Directory",
+            key="report.output_dir",
+            val_type=str,
+            description="Folder to save generated reports.",
+        ),
+        MenuItem(
+            "Template Directory",
+            key="report.template_dir",
+            val_type=str,
+            description="Folder containing custom Jinja2 templates.",
+        ),
+        MenuItem(
+            "Download PDF",
+            key="report.download_pdf",
+            val_type=bool,
+            description="Download and cache paper PDFs locally.",
+        ),
+        MenuItem(
+            "PDF Cache Directory",
+            key="report.pdf_cache_dir",
+            val_type=str,
+            description="Folder where downloaded PDFs are cached.",
+        ),
+        MenuItem(
+            "Language",
+            key="report.language",
+            val_type=str,
+            description="Language to write the paper summaries/reports in.",
+        ),
     ],
     "scheduler": [
         MenuItem("<- Back to Main Menu", target="back"),
-        MenuItem("Enabled", key="scheduler.enabled", val_type=bool, description="Run discovery pipeline on a schedule."),
-        MenuItem("Cron Hour", key="scheduler.cron_hour", val_type=int, description="Hour of the day to execute (0-23)."),
-        MenuItem("Cron Minute", key="scheduler.cron_minute", val_type=int, description="Minute of the hour to execute (0-59)."),
-        MenuItem("Timezone", key="scheduler.timezone", val_type=str, description="Timezone to use for the scheduler schedule."),
+        MenuItem(
+            "Enabled",
+            key="scheduler.enabled",
+            val_type=bool,
+            description="Run discovery pipeline on a schedule.",
+        ),
+        MenuItem(
+            "Cron Hour",
+            key="scheduler.cron_hour",
+            val_type=int,
+            description="Hour of the day to execute (0-23).",
+        ),
+        MenuItem(
+            "Cron Minute",
+            key="scheduler.cron_minute",
+            val_type=int,
+            description="Minute of the hour to execute (0-59).",
+        ),
+        MenuItem(
+            "Timezone",
+            key="scheduler.timezone",
+            val_type=str,
+            description="Timezone to use for the scheduler schedule.",
+        ),
     ],
     "publish": [
         MenuItem("<- Back to Main Menu", target="back"),
-        MenuItem("Global Enabled", key="publish.enabled", val_type=bool, description="Enable paper publishing globally."),
-        MenuItem("Notion Integration Settings", target="publish_notion", description="Configure publishing to a Notion database."),
-        MenuItem("WeChat Integration Settings", target="publish_wechat", description="Configure publishing to a WeChat Official Account."),
-        MenuItem("Blog/Webhook Integration Settings", target="publish_blog", description="Configure publishing to a custom blog/webhook."),
+        MenuItem(
+            "Global Enabled",
+            key="publish.enabled",
+            val_type=bool,
+            description="Enable paper publishing globally.",
+        ),
+        MenuItem(
+            "Notion Integration Settings",
+            target="publish_notion",
+            description="Configure publishing to a Notion database.",
+        ),
+        MenuItem(
+            "WeChat Integration Settings",
+            target="publish_wechat",
+            description="Configure publishing to a WeChat Official Account.",
+        ),
+        MenuItem(
+            "Blog/Webhook Integration Settings",
+            target="publish_blog",
+            description="Configure publishing to a custom blog/webhook.",
+        ),
     ],
     "publish_notion": [
         MenuItem("<- Back to Publishing Settings", target="back"),
-        MenuItem("Enabled", key="publish.notion.enabled", val_type=bool, description="Publish reports to Notion."),
-        MenuItem("API Key", key="publish.notion.api_key", val_type=str, secret=True, description="Notion Integration Secret Token."),
-        MenuItem("Database ID", key="publish.notion.database_id", val_type=str, description="Notion Database ID to insert pages into."),
+        MenuItem(
+            "Enabled",
+            key="publish.notion.enabled",
+            val_type=bool,
+            description="Publish reports to Notion.",
+        ),
+        MenuItem(
+            "API Key",
+            key="publish.notion.api_key",
+            val_type=str,
+            secret=True,
+            description="Notion Integration Secret Token.",
+        ),
+        MenuItem(
+            "Database ID",
+            key="publish.notion.database_id",
+            val_type=str,
+            description="Notion Database ID to insert pages into.",
+        ),
     ],
     "publish_wechat": [
         MenuItem("<- Back to Publishing Settings", target="back"),
-        MenuItem("Enabled", key="publish.wechat.enabled", val_type=bool, description="Publish reports to WeChat."),
-        MenuItem("App ID", key="publish.wechat.appid", val_type=str, description="WeChat Official Account App ID."),
-        MenuItem("Secret", key="publish.wechat.secret", val_type=str, secret=True, description="WeChat Official Account App Secret."),
+        MenuItem(
+            "Enabled",
+            key="publish.wechat.enabled",
+            val_type=bool,
+            description="Publish reports to WeChat.",
+        ),
+        MenuItem(
+            "App ID",
+            key="publish.wechat.appid",
+            val_type=str,
+            description="WeChat Official Account App ID.",
+        ),
+        MenuItem(
+            "Secret",
+            key="publish.wechat.secret",
+            val_type=str,
+            secret=True,
+            description="WeChat Official Account App Secret.",
+        ),
     ],
     "publish_blog": [
         MenuItem("<- Back to Publishing Settings", target="back"),
-        MenuItem("Enabled", key="publish.blog.enabled", val_type=bool, description="Publish reports to a custom blog/webhook."),
-        MenuItem("Webhook URL", key="publish.blog.webhook_url", val_type=str, description="Target endpoint URL to send report data."),
-        MenuItem("API Key", key="publish.blog.api_key", val_type=str, secret=True, description="Authorization API token for the blog endpoint."),
+        MenuItem(
+            "Enabled",
+            key="publish.blog.enabled",
+            val_type=bool,
+            description="Publish reports to a custom blog/webhook.",
+        ),
+        MenuItem(
+            "Webhook URL",
+            key="publish.blog.webhook_url",
+            val_type=str,
+            description="Target endpoint URL to send report data.",
+        ),
+        MenuItem(
+            "API Key",
+            key="publish.blog.api_key",
+            val_type=str,
+            secret=True,
+            description="Authorization API token for the blog endpoint.",
+        ),
     ],
 }
 
@@ -200,7 +425,7 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
         role_label = {
             "text": "Text LLM",
             "vision": "Vision LLM",
-            "searcher": "Searcher LLM"
+            "searcher": "Searcher LLM",
         }[role]
 
         current_base_url = get_config_value(cfg, f"llms.{role}.base_url")
@@ -210,7 +435,14 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
             MenuItem("<- Back to LLM Roles", target="back"),
         ]
         for spec in PROVIDERS:
-            is_active = (spec.key == active_vendor)
+            if role == "searcher" and spec.key not in (
+                "openai",
+                "qwen",
+                "doubao",
+                "grok",
+            ):
+                continue
+            is_active = spec.key == active_vendor
             label = spec.name
             if is_active:
                 label = f"{label} [bold green](Active)[/bold green]"
@@ -218,20 +450,21 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
                 MenuItem(
                     label=label,
                     target=f"llm_{role}_{spec.key}",
-                    description=f"Configure {spec.name} settings for {role_label}."
+                    description=f"Configure {spec.name} settings for {role_label}.",
                 )
             )
         return items
 
     # Check if specific vendor setting menu
     # e.g., "llm_text_openai"
-    vendor_setting_match = re.match(r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", menu_id)
+    vendor_setting_match = re.match(
+        r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", menu_id
+    )
     if vendor_setting_match:
         role, vendor_key = vendor_setting_match.groups()
         return _llm_submenu_items(role, vendor_key)
 
     raise KeyError(f"Menu '{menu_id}' not found.")
-
 
 
 def get_config_path() -> Path:
@@ -274,20 +507,30 @@ def strip_markup(text: str) -> str:
 def format_menu_item(item: MenuItem, current_val: Any, is_selected: bool) -> str:
     """Format a menu item into a colorized string."""
     marker = "▶ " if is_selected else "  "
-    
+
     if is_selected:
         label_part = f"[bold cyan]{item.label}[/bold cyan]"
     else:
         label_part = item.label
-        
+
     if item.key:
         if item.val_type is bool:
-            val_str = "[bold green]ON[/bold green]" if current_val else "[bold red]OFF[/bold red]"
+            val_str = (
+                "[bold green]ON[/bold green]"
+                if current_val
+                else "[bold red]OFF[/bold red]"
+            )
         elif item.secret:
-            val_str = "[yellow]••••••••[/yellow]" if current_val else "[dim](not set)[/dim]"
+            val_str = (
+                "[yellow]••••••••[/yellow]" if current_val else "[dim](not set)[/dim]"
+            )
         else:
-            val_str = f"[cyan]{current_val}[/cyan]" if (current_val not in (None, "")) else "[dim](empty)[/dim]"
-        
+            val_str = (
+                f"[cyan]{current_val}[/cyan]"
+                if (current_val not in (None, ""))
+                else "[dim](empty)[/dim]"
+            )
+
         plain_label = strip_markup(item.label)
         padding = " " * max(0, 32 - len(plain_label))
         return f"{marker}{label_part}{padding} : {val_str}"
@@ -298,39 +541,35 @@ def format_menu_item(item: MenuItem, current_val: Any, is_selected: bool) -> str
 def make_ui(menu_id: str, selected_idx: int, cfg: AppConfig) -> Panel:
     """Build the UI component hierarchy for Rich."""
     menu_def = get_menu_definition(menu_id, cfg)
-    
+
     title = Text.assemble(
         ("⚙  ", "bold purple"),
         ("ppagent Config Manager", "bold white"),
-        (f"  ({get_config_path().relative_to(PROJECT_ROOT)})", "dim")
+        (f"  ({get_config_path().relative_to(PROJECT_ROOT)})", "dim"),
     )
-    
+
     options_group = []
     for i, item in enumerate(menu_def):
         current_val = get_config_value(cfg, item.key) if item.key else None
         line = format_menu_item(item, current_val, i == selected_idx)
         options_group.append(line)
-    
+
     body_content = "\n".join(options_group)
-    
+
     selected_item = menu_def[selected_idx]
     desc = selected_item.description
-    
+
     content = Group(
         Panel(body_content, border_style="cyan", title="Navigation Menu"),
         Panel(
             f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: \\[↑/↓] Navigate  \\[Enter] Select/Toggle  \\[←] Back  \\[q] Save & Quit  \\[x] Discard & Quit[/dim]",
             border_style="dim blue",
-            title="Help & Controls"
-        )
+            title="Help & Controls",
+        ),
     )
-    
+
     outer_panel = Panel(
-        content,
-        title=title,
-        border_style="purple",
-        title_align="left",
-        expand=True
+        content, title=title, border_style="purple", title_align="left", expand=True
     )
     return outer_panel
 
@@ -339,8 +578,8 @@ def get_key() -> str:
     """Read a keypress in raw mode on macOS/Linux."""
     if not sys.stdin.isatty():
         char = sys.stdin.read(1)
-        if char == '\n':
-            return 'enter'
+        if char == "\n":
+            return "enter"
         return char
 
     import tty
@@ -353,31 +592,31 @@ def get_key() -> str:
         tty.setraw(fd)
         # Read first byte
         b = os.read(fd, 1)
-        if b == b'\x03':  # Ctrl+C
+        if b == b"\x03":  # Ctrl+C
             raise KeyboardInterrupt
-        if b == b'\x1b':
+        if b == b"\x1b":
             # Check if more bytes are available (escape sequence)
             r, _, _ = select.select([fd], [], [], 0.05)
             if r:
                 b2 = os.read(fd, 1)
-                if b2 == b'[':
+                if b2 == b"[":
                     r, _, _ = select.select([fd], [], [], 0.05)
                     if r:
                         b3 = os.read(fd, 1)
-                        if b3 == b'A':
-                            return 'up'
-                        elif b3 == b'B':
-                            return 'down'
-                        elif b3 == b'C':
-                            return 'right'
-                        elif b3 == b'D':
-                            return 'left'
-            return 'esc'
-        elif b in (b'\r', b'\n'):
-            return 'enter'
-        elif b in (b'\x7f', b'\x08'):
-            return 'backspace'
-        return b.decode('utf-8', errors='ignore')
+                        if b3 == b"A":
+                            return "up"
+                        elif b3 == b"B":
+                            return "down"
+                        elif b3 == b"C":
+                            return "right"
+                        elif b3 == b"D":
+                            return "left"
+            return "esc"
+        elif b in (b"\r", b"\n"):
+            return "enter"
+        elif b in (b"\x7f", b"\x08"):
+            return "backspace"
+        return b.decode("utf-8", errors="ignore")
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
@@ -387,15 +626,15 @@ def edit_setting(name: str, current_value: Any, val_type: type) -> Any:
     console.print(f"\n[bold]Editing {name}[/bold]")
     curr_str = "" if current_value is None else str(current_value)
     console.print(f"Current value: [cyan]{curr_str or '(empty)'}[/cyan]")
-    
+
     prompt_str = "Enter new value"
-    
+
     while True:
         try:
             val_str = Prompt.ask(prompt_str, default=curr_str, show_default=False)
             if val_str == curr_str:
                 return current_value
-            
+
             # Type conversion
             if val_type is int:
                 return int(val_str)
@@ -407,7 +646,9 @@ def edit_setting(name: str, current_value: Any, val_type: type) -> Any:
             console.print("\n[yellow]Editing cancelled.[/yellow]")
             return current_value
         except ValueError:
-            console.print(f"[red]Invalid value for type {val_type.__name__}. Please try again.[/red]")
+            console.print(
+                f"[red]Invalid value for type {val_type.__name__}. Please try again.[/red]"
+            )
 
 
 def save_config(cfg: AppConfig, path: Path) -> None:
@@ -418,11 +659,12 @@ def save_config(cfg: AppConfig, path: Path) -> None:
     user re-enters that provider's page.
     """
     import tomli_w
+
     for role in _LLM_ROLES:
         _snapshot_active_vendor(cfg, role)
     data = cfg.model_dump()
     data.pop("root", None)
-    
+
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         tomli_w.dump(data, f)
@@ -432,59 +674,67 @@ def run_config_tui() -> None:
     """Run the interactive TUI configuration loop."""
     config_file = get_config_path()
     if not config_file.exists():
-        console.print("[yellow]Configuration file settings.toml not found. Initializing default config...[/yellow]")
+        console.print(
+            "[yellow]Configuration file settings.toml not found. Initializing default config...[/yellow]"
+        )
         config_init()
-        
+
     try:
         cfg = load_config()
     except Exception as e:
         console.print(f"[red]Error loading configuration:[/red] {e}")
         raise typer.Exit(1)
-        
+
     # Navigation stack stores tuples of (menu_id, selected_idx)
     menu_stack: list[tuple[str, int]] = [("main", 0)]
-    
-    with Live(make_ui("main", 0, cfg), console=console, screen=True, auto_refresh=False) as live:
+
+    with Live(
+        make_ui("main", 0, cfg), console=console, screen=True, auto_refresh=False
+    ) as live:
         while True:
             menu_id, selected_idx = menu_stack[-1]
             menu_def = get_menu_definition(menu_id, cfg)
-            
+
             live.update(make_ui(menu_id, selected_idx, cfg), refresh=True)
-            
+
             try:
                 key = get_key()
             except KeyboardInterrupt:
                 break
-                
-            if key == 'up' or key == 'k':
+
+            if key == "up" or key == "k":
                 selected_idx = (selected_idx - 1) % len(menu_def)
                 menu_stack[-1] = (menu_id, selected_idx)
-            elif key == 'down' or key == 'j':
+            elif key == "down" or key == "j":
                 selected_idx = (selected_idx + 1) % len(menu_def)
                 menu_stack[-1] = (menu_id, selected_idx)
-            elif key == 'left' or key == 'esc':
+            elif key == "left" or key == "esc":
                 if len(menu_stack) > 1:
                     menu_stack.pop()
-            elif key == 'q':
+            elif key == "q":
                 save_config(cfg, config_file)
                 live.stop()
-                console.print(f"[bold green]Configuration saved successfully to {config_file.relative_to(PROJECT_ROOT)}[/bold green]")
+                console.print(
+                    f"[bold green]Configuration saved successfully to {config_file.relative_to(PROJECT_ROOT)}[/bold green]"
+                )
                 return
-            elif key == 'x':
+            elif key == "x":
                 live.stop()
                 console.print("[yellow]Changes discarded.[/yellow]")
                 return
-            elif key == 'enter':
+            elif key == "enter":
                 item = menu_def[selected_idx]
                 if item.target:
-                    if item.target == 'back':
+                    if item.target == "back":
                         if len(menu_stack) > 1:
                             menu_stack.pop()
                     else:
                         # Entering a vendor's settings page: make that vendor
                         # active for the role, snapshotting/restore so each
                         # provider keeps its own api_key/model across switches.
-                        match = re.match(r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", item.target)
+                        match = re.match(
+                            r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", item.target
+                        )
                         if match:
                             role, vendor_key = match.groups()
                             _switch_vendor(cfg, role, vendor_key)
@@ -498,6 +748,6 @@ def run_config_tui() -> None:
                         new_val = edit_setting(item.label, curr_val, item.val_type)
                         set_config_value(cfg, item.key, new_val)
                         live.start()
-    
+
     # If the loop ended via break/escape on main menu/Ctrl+C
     console.print("[yellow]TUI config session closed. Changes not saved.[/yellow]")
