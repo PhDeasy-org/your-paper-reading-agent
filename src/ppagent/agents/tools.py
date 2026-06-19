@@ -201,19 +201,15 @@ def _web_search(query: str) -> str:
 
     try:
         client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
-        response = client.chat.completions.create(
-            model="grok-2-latest",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful search assistant. Use the web search tool to find detailed, accurate information for the user's query.",
-                },
+        response = client.responses.create(
+            model="grok-4.3",
+            input=[
                 {"role": "user", "content": query},
             ],
             tools=[{"type": "web_search"}],
         )
-        content = response.choices[0].message.content or ""
-        citations = getattr(response.choices[0].message, "citations", None)
+        content = getattr(response, "output_text", "") or ""
+        citations = getattr(response, "citations", None)
         if citations:
             content += "\n\nCitations:\n" + "\n".join(f"- {c}" for c in citations)
         return content
