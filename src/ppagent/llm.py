@@ -65,16 +65,13 @@ class LLMClient:
         if not usage:
             return
         local_usage = self._get_local_usage()
-        prompt = (
-            getattr(usage, "prompt_tokens", None)
-            or getattr(usage, "input_tokens", 0)
-            or 0
-        )
-        completion = (
-            getattr(usage, "completion_tokens", None)
-            or getattr(usage, "output_tokens", 0)
-            or 0
-        )
+        prompt = getattr(usage, "prompt_tokens", None)
+        if prompt is None:
+            prompt = getattr(usage, "input_tokens", 0) or 0
+
+        completion = getattr(usage, "completion_tokens", None)
+        if completion is None:
+            completion = getattr(usage, "output_tokens", 0) or 0
         total = getattr(usage, "total_tokens", 0) or 0
         if total == 0:
             total = prompt + completion
