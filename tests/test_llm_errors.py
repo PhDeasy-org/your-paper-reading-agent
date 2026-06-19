@@ -20,6 +20,7 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy-key-for-unit-tests")
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_client(**overrides: object) -> LLMClient:
     cfg = LLMConfig(
         base_url="https://api.moonshot.ai/v1",
@@ -38,14 +39,19 @@ def _make_status_error(
     body: dict | None = None,
 ) -> openai.APIStatusError:
     """Build the correct OpenAI SDK status-error subclass for *status_code*."""
-    response = httpx.Response(status_code=status_code, request=httpx.Request("POST", "https://x"))
-    err_body: dict = body or {"error": {"message": message, "type": "invalid_request_error"}}
+    response = httpx.Response(
+        status_code=status_code, request=httpx.Request("POST", "https://x")
+    )
+    err_body: dict = body or {
+        "error": {"message": message, "type": "invalid_request_error"}
+    }
     return openai.APIStatusError(message=message, response=response, body=err_body)
 
 
 # ---------------------------------------------------------------------------
 # _describe_config
 # ---------------------------------------------------------------------------
+
 
 class TestDescribeConfig:
     def test_masks_long_api_key(self) -> None:
@@ -70,6 +76,7 @@ class TestDescribeConfig:
 # ---------------------------------------------------------------------------
 # _friendly_error
 # ---------------------------------------------------------------------------
+
 
 class TestFriendlyError:
     def test_authentication_error(self) -> None:
@@ -128,6 +135,7 @@ class TestFriendlyError:
 # _call_with_retry — retry vs. no-retry behaviour
 # ---------------------------------------------------------------------------
 
+
 class TestCallWithRetry:
     def test_auth_error_raises_immediately_without_retry(self) -> None:
         client = _make_client()
@@ -138,13 +146,13 @@ class TestCallWithRetry:
             body=exc.body,
         )
         client._client = MagicMock()
-        client._client.chat.completions.create.side_effect = auth_exc
+        client._client.responses.create.side_effect = auth_exc
 
         with pytest.raises(RuntimeError, match="Authentication failed"):
-            client._call_with_retry({"model": "m", "messages": []})
+            client._call_with_retry({"model": "m", "input": []})
 
         # Should have been called exactly once — no retries for auth errors.
-        assert client._client.chat.completions.create.call_count == 1
+        assert client._client.responses.create.call_count == 1
 
     def test_not_found_error_raises_immediately(self) -> None:
         client = _make_client()
@@ -155,11 +163,11 @@ class TestCallWithRetry:
             body=exc.body,
         )
         client._client = MagicMock()
-        client._client.chat.completions.create.side_effect = nf_exc
+        client._client.responses.create.side_effect = nf_exc
 
         with pytest.raises(RuntimeError, match="Model not found"):
-            client._call_with_retry({"model": "m", "messages": []})
-        assert client._client.chat.completions.create.call_count == 1
+            client._call_with_retry({"model": "m", "input": []})
+        assert client._client.responses.create.call_count == 1
 
     def test_bad_request_raises_immediately(self) -> None:
         client = _make_client()
@@ -170,11 +178,11 @@ class TestCallWithRetry:
             body=exc.body,
         )
         client._client = MagicMock()
-        client._client.chat.completions.create.side_effect = br_exc
+        client._client.responses.create.side_effect = br_exc
 
         with pytest.raises(RuntimeError, match="Bad request"):
-            client._call_with_retry({"model": "m", "messages": []})
-        assert client._client.chat.completions.create.call_count == 1
+            client._call_with_retry({"model": "m", "input": []})
+        assert client._client.responses.create.call_count == 1
 
     def test_transient_server_error_retries_then_raises(self) -> None:
         client = _make_client()
@@ -185,35 +193,37 @@ class TestCallWithRetry:
             body=exc.body,
         )
         client._client = MagicMock()
-        client._client.chat.completions.create.side_effect = ise_exc
+        client._client.responses.create.side_effect = ise_exc
 
         # Patch sleep so we don't wait
         with patch("ppagent.llm.time.sleep"):
             with pytest.raises(RuntimeError, match="server error"):
-                client._call_with_retry({"model": "m", "messages": []})
+                client._call_with_retry({"model": "m", "input": []})
 
         # Should have retried _MAX_RETRIES times (3)
-        assert client._client.chat.completions.create.call_count == 3
+        assert client._client.responses.create.call_count == 3
 
     def test_transient_connection_error_retries_then_succeeds(self) -> None:
         client = _make_client()
         conn_exc = openai.APIConnectionError(request=httpx.Request("POST", "https://x"))
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock()]
+        mock_resp.output_text = "success content"
+        mock_resp.citations = None
 
         client._client = MagicMock()
-        client._client.chat.completions.create.side_effect = [conn_exc, mock_resp]
+        client._client.responses.create.side_effect = [conn_exc, mock_resp]
 
         with patch("ppagent.llm.time.sleep"):
-            result = client._call_with_retry({"model": "m", "messages": []})
+            result = client._call_with_retry({"model": "m", "input": []})
 
         assert result is mock_resp
-        assert client._client.chat.completions.create.call_count == 2
+        assert client._client.responses.create.call_count == 2
 
 
 # ---------------------------------------------------------------------------
 # Provider detection (moonshot.ai) — sourced from the central registry.
 # ---------------------------------------------------------------------------
+
 
 class TestProviderDetection:
     def test_moonshot_ai_detected_as_kimi_ai(self) -> None:

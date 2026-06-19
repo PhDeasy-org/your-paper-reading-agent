@@ -36,18 +36,26 @@ class LLMClient:
             api_key=config.api_key,
             timeout=config.timeout,
         )
-        mode = self._resolve_instructor_mode()
-        self._instructor = instructor.from_openai(self._client, mode=mode)
+        self._mode = self._resolve_instructor_mode()
+        self._instructor = instructor.from_openai(self._client, mode=self._mode)
         self._thread_local = threading.local()
 
     def _get_local_usage(self) -> dict[str, int]:
         if not hasattr(self._thread_local, "usage"):
-            self._thread_local.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            self._thread_local.usage = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            }
         return self._thread_local.usage
 
     def reset_usage(self) -> None:
         """Reset token usage counter for the current thread."""
-        self._thread_local.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        self._thread_local.usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
 
     def get_usage(self) -> dict[str, int]:
         """Get accumulated token usage for the current thread."""
@@ -57,8 +65,16 @@ class LLMClient:
         if not usage:
             return
         local_usage = self._get_local_usage()
-        prompt = getattr(usage, "prompt_tokens", 0) or 0
-        completion = getattr(usage, "completion_tokens", 0) or 0
+        prompt = (
+            getattr(usage, "prompt_tokens", None)
+            or getattr(usage, "input_tokens", 0)
+            or 0
+        )
+        completion = (
+            getattr(usage, "completion_tokens", None)
+            or getattr(usage, "output_tokens", 0)
+            or 0
+        )
         total = getattr(usage, "total_tokens", 0) or 0
         if total == 0:
             total = prompt + completion
@@ -70,19 +86,25 @@ class LLMClient:
         mode_str = self.config.instructor_mode.lower()
         if mode_str == "auto":
             if is_reasoning_model(self.config.model):
-                logger.info("Auto-detected reasoning model '%s': using MD_JSON mode", self.config.model)
+                logger.info(
+                    "Auto-detected reasoning model '%s': using MD_JSON mode",
+                    self.config.model,
+                )
                 return instructor.Mode.MD_JSON
-            return instructor.Mode.TOOLS
+            return instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS
 
         mapping = {
-            "tools": instructor.Mode.TOOLS,
+            "tools": instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS,
             "json": instructor.Mode.JSON,
             "md_json": instructor.Mode.MD_JSON,
             "json_schema": instructor.Mode.JSON_SCHEMA,
         }
         if mode_str not in mapping:
-            logger.warning("Unknown instructor_mode '%s', falling back to TOOLS", self.config.instructor_mode)
-            return instructor.Mode.TOOLS
+            logger.warning(
+                "Unknown instructor_mode '%s', falling back to RESPONSES_TOOLS_WITH_INBUILT_TOOLS",
+                self.config.instructor_mode,
+            )
+            return instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS
         return mapping[mode_str]
 
     def _thinking_kwargs(self) -> dict[str, Any]:
@@ -107,7 +129,10 @@ class LLMClient:
     def _clamp_max_tokens(self, max_tokens: int | None) -> int:
         val = max_tokens or self.config.max_tokens
         if val > 16384:
-            logger.warning("max_tokens %d is abnormally high for output completion; clamping to 16384", val)
+            logger.warning(
+                "max_tokens %d is abnormally high for output completion; clamping to 16384",
+                val,
+            )
             return 16384
         return val
 
@@ -118,13 +143,15 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> openai.types.chat.ChatCompletion:
+    ) -> openai.types.responses.Response:
         """Raw chat completion, optionally with tool definitions."""
         kwargs: dict[str, Any] = {
             "model": self.config.model,
-            "messages": messages,
-            "temperature": temperature if temperature is not None else self.config.temperature,
-            "max_tokens": self._clamp_max_tokens(max_tokens),
+            "input": messages,
+            "temperature": temperature
+            if temperature is not None
+            else self.config.temperature,
+            "max_output_tokens": self._clamp_max_tokens(max_tokens),
         }
         thinking = self._thinking_kwargs()
         if thinking:
@@ -144,20 +171,45 @@ class LLMClient:
         response_model: type[BaseModel],
     ) -> BaseModel:
         """Chat completion that guarantees a structured Pydantic output via instructor."""
-        kwargs: dict[str, Any] = {
-            "model": self.config.model,
-            "messages": messages,
-            "response_model": response_model,
-            "temperature": self.config.temperature,
-            "max_tokens": self._clamp_max_tokens(None),
-        }
-        thinking = self._thinking_kwargs()
-        if thinking:
-            kwargs.update(thinking)
-            extra = thinking.get("extra_body", {})
-            if "reasoning_effort" in extra or extra.get("thinking"):
-                kwargs.pop("temperature", None)
-        response, raw_completion = self._instructor.chat.completions.create_with_completion(**kwargs)
+        is_responses_mode = self._mode in (
+            instructor.Mode.RESPONSES_TOOLS,
+            instructor.Mode.RESPONSES_TOOLS_WITH_INBUILT_TOOLS,
+        )
+        if is_responses_mode:
+            kwargs: dict[str, Any] = {
+                "model": self.config.model,
+                "input": messages,
+                "response_model": response_model,
+                "temperature": self.config.temperature,
+                "max_output_tokens": self._clamp_max_tokens(None),
+            }
+            thinking = self._thinking_kwargs()
+            if thinking:
+                kwargs.update(thinking)
+                extra = thinking.get("extra_body", {})
+                if "reasoning_effort" in extra or extra.get("thinking"):
+                    kwargs.pop("temperature", None)
+            response, raw_completion = (
+                self._instructor.responses.create_with_completion(**kwargs)
+            )
+        else:
+            kwargs: dict[str, Any] = {
+                "model": self.config.model,
+                "messages": messages,
+                "response_model": response_model,
+                "temperature": self.config.temperature,
+                "max_tokens": self._clamp_max_tokens(None),
+            }
+            thinking = self._thinking_kwargs()
+            if thinking:
+                kwargs.update(thinking)
+                extra = thinking.get("extra_body", {})
+                if "reasoning_effort" in extra or extra.get("thinking"):
+                    kwargs.pop("temperature", None)
+            response, raw_completion = (
+                self._instructor.chat.completions.create_with_completion(**kwargs)
+            )
+
         self._record_usage(raw_completion.usage)
         return response
 
@@ -176,20 +228,26 @@ class LLMClient:
         content: list[dict[str, Any]] = [{"type": "text", "text": user_text}]
         for img_path in images:
             data_uri = _image_to_data_uri(img_path)
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": data_uri},
-            })
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": data_uri},
+                }
+            )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system},
             {"role": "user", "content": content},
         ]
         resp = self.chat(messages)
-        return resp.choices[0].message.content or ""
+        return resp.output_text
 
     def _describe_config(self) -> str:
         """Return a short human-readable description of the current LLM config."""
-        masked_key = (self.config.api_key[:8] + "...") if len(self.config.api_key) > 8 else "<not set>"
+        masked_key = (
+            (self.config.api_key[:8] + "...")
+            if len(self.config.api_key) > 8
+            else "<not set>"
+        )
         provider = detect_provider(self.config.base_url)
         return (
             f"model={self.config.model!r}, base_url={self.config.base_url!r}, "
@@ -262,7 +320,9 @@ class LLMClient:
         openai.BadRequestError,
     )
 
-    def _call_with_retry(self, kwargs: dict[str, Any]) -> openai.types.chat.ChatCompletion:
+    def _call_with_retry(
+        self, kwargs: dict[str, Any]
+    ) -> openai.types.responses.Response:
         """Call the OpenAI API with exponential backoff on transient errors.
 
         Non-transient errors (401, 403, 404, 400) are raised immediately with
@@ -272,7 +332,7 @@ class LLMClient:
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
-                resp = self._client.chat.completions.create(**kwargs)
+                resp = self._client.responses.create(**kwargs)
                 return resp
             except self._NON_RETRYABLE as exc:
                 # Auth, permission, not-found, bad-request: do not retry.
@@ -286,13 +346,24 @@ class LLMClient:
             ) as exc:
                 last_err = exc
                 wait = _RETRY_BACKOFF * (2**attempt)
-                logger.warning("LLM API error (attempt %d/%d): %s — retrying in %ds",
-                               attempt + 1, _MAX_RETRIES, exc, wait)
+                logger.warning(
+                    "LLM API error (attempt %d/%d): %s — retrying in %ds",
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    exc,
+                    wait,
+                )
                 time.sleep(wait)
         # All retries exhausted on a transient error.
-        msg = self._friendly_error(last_err, config_desc) if last_err else "LLM API call failed"
+        msg = (
+            self._friendly_error(last_err, config_desc)
+            if last_err
+            else "LLM API call failed"
+        )
         logger.error(msg)
-        raise RuntimeError(f"{msg}\n  (failed after {_MAX_RETRIES} retries)") from last_err
+        raise RuntimeError(
+            f"{msg}\n  (failed after {_MAX_RETRIES} retries)"
+        ) from last_err
 
     @staticmethod
     def build_messages(
