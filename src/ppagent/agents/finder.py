@@ -15,7 +15,7 @@ from ppagent.agents.prompts import (
 )
 from ppagent.agents.tools import HF_PAPER_INFO, HF_READ_PAPER, XAI_WEB_SEARCH
 from ppagent.llm import LLMClient
-from ppagent.models import AgentResult, FinderOutput, PaperContent, Paper
+from ppagent.models import AgentResult, FinderOutput, PaperContent
 
 logger = logging.getLogger(__name__)
 
@@ -83,18 +83,15 @@ class FinderAgent(AgentWithTools):
             )
             output = FinderOutput(narrative=narrative)
 
-        # Build Paper objects from related works
-        related_papers: list[Paper] = []
-        for rw in output.related_works:
-            if rw.paper_id:
-                related_papers.append(Paper(id=rw.paper_id, title=rw.title))
+        # Keep only related works that carry an identifier we can link to.
+        related_works = [rw for rw in output.related_works if rw.paper_id]
 
         return AgentResult(
             agent_name=self.name,
             success=True,
             data={
                 "narrative": output.narrative or narrative,
-                "related_works": related_papers,
+                "related_works": related_works,
             },
             usage=self.llm.get_usage(),
         )

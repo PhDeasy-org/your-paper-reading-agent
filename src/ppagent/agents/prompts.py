@@ -539,7 +539,10 @@ Related work exploration results:
 {narrative}
 
 Extract: a narrative summary of the related work landscape, and a list of the top \
-related papers (with paper_id and title).\
+related papers (with paper_id and title). For EACH related paper, write a concise \
+"relevance" — one or two sentences explaining its specific relationship to the main \
+paper (e.g., the prior work it extends, the baseline it compares against, the problem \
+it shares, or the technique it adopts). Be specific and avoid generic statements.\
 """
 
 

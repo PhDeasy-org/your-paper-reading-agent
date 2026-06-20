@@ -10,6 +10,7 @@ import pytest
 from ppagent.models import (
     Paper,
     PaperReport,
+    RelatedWork,
     ReportSection,
 )
 
@@ -62,9 +63,10 @@ def sample_report(sample_paper: Paper) -> PaperReport:
             content="Solid work but limited to sequence-to-sequence tasks.",
         ),
         related_works=[
-            Paper(
-                id="2506.99999",
+            RelatedWork(
+                paper_id="2506.99999",
                 title="BERT: Pre-training of Deep Bidirectional Transformers",
+                relevance="Pre-trains a Transformer encoder that the main paper's decoder-only architecture builds upon.",
             ),
         ],
         generated_at=datetime(2025, 6, 13, 12, 0),

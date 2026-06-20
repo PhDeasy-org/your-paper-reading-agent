@@ -52,7 +52,7 @@
 
 {% if related_works %}
 {% for rp in related_works %}
-- [{{ rp.title }}]({{ rp.arxiv_url }}) ({{ rp.id }})
+- [{{ rp.title }}]({{ rp.arxiv_url }}) ({{ rp.paper_id }}){% if rp.relevance %}: {{ rp.relevance }}{% endif %}
 {% endfor %}
 {% else %}
 No related papers found.

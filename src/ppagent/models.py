@@ -86,7 +86,7 @@ class PaperReport(BaseModel):
     method: ReportSection = Field(description="Section explaining the proposed method or framework.")
     evaluation: ReportSection = Field(description="Section summarizing the experimental results and evaluation.")
     critique: ReportSection = Field(description="Section providing a critical analysis of the paper's strengths and weaknesses.")
-    related_works: list[Paper] = Field(default_factory=list, description="A list of other papers related to this one.")
+    related_works: list[RelatedWork] = Field(default_factory=list, description="A list of other papers related to this one, each with an explanation of its relationship to the main paper.")
     generated_at: datetime = Field(default_factory=datetime.now, description="The timestamp when this report was generated.")
     model_used: str = Field(default="", description="The primary LLM model used to generate the text of this report.")
     usage: dict[str, int] = Field(default_factory=dict, description="Token usage statistics aggregated across all generation steps.")
@@ -168,7 +168,15 @@ class RelatedWork(BaseModel):
 
     paper_id: str = Field(description="The identifier of the related work.")
     title: str = Field(description="The title of the related work.")
-    relevance: str = Field(default="", description="An explanation of how this work is related to the main paper.")
+    relevance: str = Field(
+        default="",
+        description="An explanation of how this work is related to the main paper.",
+    )
+
+    @property
+    def arxiv_url(self) -> str:
+        """The arXiv landing page URL for this related work."""
+        return f"https://arxiv.org/abs/{self.paper_id}" if self.paper_id else ""
 
 
 class FinderOutput(BaseModel):
