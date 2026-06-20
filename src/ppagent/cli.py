@@ -10,7 +10,13 @@ from rich.console import Console
 from rich.table import Table
 
 from ppagent import __version__
-from ppagent.config import AppConfig, load_config, PROJECT_ROOT, _BACKUP_CONFIG_PATH
+from ppagent.config import (
+    AppConfig,
+    load_config,
+    PROJECT_ROOT,
+    _BACKUP_CONFIG_PATH,
+    _sync_backup,
+)
 from ppagent.storage import Storage
 
 app = typer.Typer(
@@ -481,6 +487,11 @@ def config_init() -> None:
 
     with open(target, "wb") as f:
         tomli_w.dump(default, f)
+
+    # Seed the persistent backup too, so a direct edit to config/settings.toml
+    # made later (without ever opening the TUI) still survives a reinstall —
+    # load_config() mirrors the project file into the backup on every read.
+    _sync_backup(target)
 
     console.print(f"[green]Created config:[/green] {target}")
     console.print("Edit it to add your API key and customize settings.")

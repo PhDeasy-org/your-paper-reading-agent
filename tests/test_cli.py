@@ -140,10 +140,17 @@ def test_cli_config_show(mock_config):
 
 def test_cli_config_init(tmp_path):
     runner = CliRunner()
-    with patch("ppagent.cli.PROJECT_ROOT", tmp_path):
+    # Redirect the persistent backup too — config_init now seeds it, and we must
+    # not clobber the developer's real ~/.config/ppagent/settings.toml.
+    backup = tmp_path / "backup" / "settings.toml"
+    with patch("ppagent.cli.PROJECT_ROOT", tmp_path), patch(
+        "ppagent.cli._BACKUP_CONFIG_PATH", backup
+    ), patch("ppagent.config._BACKUP_CONFIG_PATH", backup):
         result = runner.invoke(app, ["config", "init"])
         assert result.exit_code == 0
         assert (tmp_path / "config" / "settings.toml").exists()
+        # A fresh init also seeds the persistent backup so reinstalls can restore.
+        assert backup.exists()
 
         # Calling it again should print that it already exists
         result_again = runner.invoke(app, ["config", "init"])

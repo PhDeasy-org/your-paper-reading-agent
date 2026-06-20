@@ -122,6 +122,19 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         thinking_extra_body=_THINKING_ENABLED,
         thinking_incompatible_with_tools=True,
     ),
+    # zai must precede glm: its base URL also contains "z.ai", but the more
+    # specific "z.ai/api/coding" pattern must win for the coding token-plan
+    # endpoint. Other z.ai URLs (e.g. the regular paas/v4 endpoint) still fall
+    # through to glm below. Unlike glm, this endpoint only exposes the OpenAI
+    # chat completions API — not the Responses API.
+    ProviderSpec(
+        key="zai",
+        name="Z.AI (Coding Token Plan)",
+        base_url="https://api.z.ai/api/coding/paas/v4",
+        default_model="glm-4.6",
+        url_patterns=("z.ai/api/coding",),
+        thinking_extra_body=_THINKING_ENABLED,
+    ),
     ProviderSpec(
         key="glm",
         name="GLM (Zhipu)",

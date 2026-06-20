@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -267,14 +268,44 @@ def _apply_env_overrides(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def _sync_backup(source: Path) -> None:
+    """Mirror ``source`` into the persistent backup at ``_BACKUP_CONFIG_PATH``.
+
+    The backup survives a project-directory reinstall (the project tree is wiped
+    by a fresh ``git clone``), so this is what lets the user's keys and provider
+    settings persist. ``save_config()`` already kept the backup in sync on TUI
+    save, but a user who edits ``config/settings.toml`` directly — or who runs
+    any CLI command without opening the TUI — would otherwise never seed the
+    backup, and lose everything on the next reinstall.
+
+    This is best-effort and non-fatal: a backup write failure must never block
+    loading config. ``source`` must not already be the backup file itself
+    (avoids a redundant in-place copy and the TUI's backup-as-source path).
+    """
+    try:
+        backup = _BACKUP_CONFIG_PATH
+        if source.resolve() == backup.resolve():
+            return
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, backup)
+    except OSError:
+        logger.debug("Failed to mirror config backup", exc_info=True)
+
+
 def load_config(path: Path | None = None) -> AppConfig:
     """Load configuration from a TOML file.
 
     Searches in order: explicit path → ./config/settings.toml → ~/.config/ppagent/settings.toml.
     A legacy flat ``[llm]`` section is auto-migrated to ``[llms.*]``.
     Environment variables override TOML values.
+
+    When the config is read from the project-level ``config/settings.toml`` (the
+    first search path), it is mirrored into the persistent backup so the user's
+    settings survive a project-directory reinstall — including edits made
+    directly to the file, outside the TUI.
     """
     config_path: Path | None = None
+    loaded_from_project = False
     if path is not None:
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
@@ -283,12 +314,20 @@ def load_config(path: Path | None = None) -> AppConfig:
         for candidate in _DEFAULT_CONFIG_PATHS:
             if candidate.exists():
                 config_path = candidate
+                loaded_from_project = candidate == _DEFAULT_CONFIG_PATHS[0]
                 break
 
     raw: dict[str, Any] = {}
     if config_path is not None:
         with open(config_path, "rb") as f:
             raw = tomllib.load(f)
+
+    # Mirror into the persistent backup so direct edits survive reinstalls.
+    # Done *before* env overrides are applied — those are per-invocation and
+    # must not be persisted to disk. ``loaded_from_project`` is only ever set
+    # when ``config_path`` was assigned, so it implies ``config_path is not None``.
+    if loaded_from_project and config_path is not None:
+        _sync_backup(config_path)
 
     raw = _migrate_legacy_llm(raw)
     raw = _apply_env_overrides(raw)

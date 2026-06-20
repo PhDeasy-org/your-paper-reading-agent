@@ -82,6 +82,9 @@ class TestDetectProvider:
             ("https://kimi.ai/v1", "kimi_cn"),
             ("https://api.moonshot.ai/v1", "kimi_ai"),
             ("https://open.bigmodel.cn/api/paas/v4", "glm"),
+            # zai's coding endpoint must detect to zai, not fall through to glm,
+            # even though both share the "z.ai" substring.
+            ("https://api.z.ai/api/coding/paas/v4", "zai"),
             ("https://api.x.ai/v1", "grok"),
             ("https://api.stepfun.ai/v1", "stepfun"),
             ("https://api.minimax.io/v1", "minimax"),
@@ -126,6 +129,7 @@ class TestThinkingExtraBody:
             "https://api.xiaomimimo.com/v1",  # mimo
             "https://ark.cn-beijing.volces.com/api/v3",  # doubao
             "https://open.bigmodel.cn/api/paas/v4",  # glm
+            "https://api.z.ai/api/coding/paas/v4",  # zai
         ]:
             assert thinking_extra_body_for(url) == expected, url
 
