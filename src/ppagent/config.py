@@ -26,6 +26,10 @@ _DEFAULT_CONFIG_PATHS = [
 # to this file when no project-level settings.toml exists.
 _BACKUP_CONFIG_PATH = Path.home() / ".config" / "ppagent" / "settings.toml"
 
+# One-generation safety net. On every save, the *previous* backup is copied
+# here before being overwritten, so a single bad overwrite remains undoable.
+_BACKUP_PATH_BAK = _BACKUP_CONFIG_PATH.with_suffix(".toml.bak")
+
 
 class LLMConfig(BaseModel):
     """LLM API configuration."""
@@ -292,6 +296,69 @@ def _sync_backup(source: Path) -> None:
         logger.debug("Failed to mirror config backup", exc_info=True)
 
 
+def _files_equal(a: Path, b: Path) -> bool:
+    """Byte-compare two files. ``False`` if either is missing/unreadable."""
+    try:
+        return a.read_bytes() == b.read_bytes()
+    except OSError:
+        return False
+
+
+def _reconcile_config(explicit_path: Path | None) -> Path | None:
+    """Resolve which config file to load, making the backup authoritative.
+
+    The persistent backup is the source of truth (it survives reinstalls); the
+    project-level ``config/settings.toml`` is a transient, gitignored working
+    copy that can be recreated with stale defaults by a reinstall or a stray
+    template. The previous behavior mirrored project → backup on *every* read,
+    which let a stale project file silently destroy the user's real keys.
+
+    Reconciliation rules (backup always wins on conflict):
+
+    * ``explicit_path`` given → honor it verbatim (caller knows best; e.g. the
+      TUI loading from the backup, or tests pointing at a fixture).
+    * No backup exists → seed the backup from the project file (preserves the
+      first-run flow) and trust the project file.
+    * Backup exists, project file missing or differs → restore the backup over
+      the project file and load the backup.
+    * Both exist and are identical → no-op, load either.
+
+    All writes are best-effort and non-fatal. Returns the path to load from,
+    or ``None`` when no config exists anywhere (caller falls back to defaults).
+    """
+    if explicit_path is not None:
+        # An explicit path is caller-authored (e.g. the TUI loading from the
+        # backup, or tests pointing at a fixture); honor it verbatim and keep
+        # the long-standing contract that a missing explicit path raises.
+        if not explicit_path.exists():
+            raise FileNotFoundError(f"Config file not found: {explicit_path}")
+        return explicit_path
+
+    project = _DEFAULT_CONFIG_PATHS[0]
+    backup = _BACKUP_CONFIG_PATH
+    backup_exists = backup.exists()
+    project_exists = project.exists()
+
+    if not backup_exists and not project_exists:
+        return None
+
+    try:
+        if not backup_exists:
+            # First run: seed the backup so future reinstalls can restore it.
+            _sync_backup(project)
+            return project
+        if not project_exists or not _files_equal(project, backup):
+            # Backup is authoritative — a stale/missing project file must never
+            # overwrite it. Restore the working copy from the backup.
+            project.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup, project)
+        return backup if project == _DEFAULT_CONFIG_PATHS[0] else project
+    except OSError:
+        logger.debug("Config reconciliation failed; using fallback", exc_info=True)
+        # Fall back to whichever file is readable.
+        return project if project_exists else (backup if backup_exists else None)
+
+
 def load_config(path: Path | None = None) -> AppConfig:
     """Load configuration from a TOML file.
 
@@ -299,35 +366,16 @@ def load_config(path: Path | None = None) -> AppConfig:
     A legacy flat ``[llm]`` section is auto-migrated to ``[llms.*]``.
     Environment variables override TOML values.
 
-    When the config is read from the project-level ``config/settings.toml`` (the
-    first search path), it is mirrored into the persistent backup so the user's
-    settings survive a project-directory reinstall — including edits made
-    directly to the file, outside the TUI.
+    The persistent backup is authoritative: if a stale project-level
+    ``config/settings.toml`` (recreated with defaults by a reinstall) disagrees
+    with the backup, the backup wins and is restored over the project file.
     """
-    config_path: Path | None = None
-    loaded_from_project = False
-    if path is not None:
-        if not path.exists():
-            raise FileNotFoundError(f"Config file not found: {path}")
-        config_path = path
-    else:
-        for candidate in _DEFAULT_CONFIG_PATHS:
-            if candidate.exists():
-                config_path = candidate
-                loaded_from_project = candidate == _DEFAULT_CONFIG_PATHS[0]
-                break
+    config_path = _reconcile_config(path)
 
     raw: dict[str, Any] = {}
     if config_path is not None:
         with open(config_path, "rb") as f:
             raw = tomllib.load(f)
-
-    # Mirror into the persistent backup so direct edits survive reinstalls.
-    # Done *before* env overrides are applied — those are per-invocation and
-    # must not be persisted to disk. ``loaded_from_project`` is only ever set
-    # when ``config_path`` was assigned, so it implies ``config_path is not None``.
-    if loaded_from_project and config_path is not None:
-        _sync_backup(config_path)
 
     raw = _migrate_legacy_llm(raw)
     raw = _apply_env_overrides(raw)

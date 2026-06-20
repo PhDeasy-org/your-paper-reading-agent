@@ -15,6 +15,7 @@ from ppagent.config import (
     load_config,
     PROJECT_ROOT,
     _BACKUP_CONFIG_PATH,
+    _files_equal,
     _sync_backup,
 )
 from ppagent.storage import Storage
@@ -412,9 +413,11 @@ def config_show() -> None:
 def config_init() -> None:
     """Create a default settings.toml if it doesn't exist.
 
-    If a persistent backup exists at ``~/.config/ppagent/settings.toml`` (left
-    over from a previous installation), it is restored instead of generating
-    fresh OpenAI defaults — so the user's provider settings survive reinstalls.
+    The persistent backup at ``~/.config/ppagent/settings.toml`` is
+    authoritative: it survives reinstalls, while ``config/settings.toml`` can
+    be recreated with stale OpenAI defaults by a reinstall or a stray template.
+    So when both exist and disagree, the backup is restored over the (stale)
+    local file — the user's real keys are never silently destroyed.
     """
     import shutil
     import tomli_w
@@ -422,12 +425,31 @@ def config_init() -> None:
     target = PROJECT_ROOT / "config" / "settings.toml"
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    if target.exists():
+    backup_exists = _BACKUP_CONFIG_PATH.exists()
+    target_exists = target.exists()
+
+    if target_exists and backup_exists:
+        if _files_equal(target, _BACKUP_CONFIG_PATH):
+            console.print(f"[yellow]Config already exists:[/yellow] {target}")
+            return
+        # Local file is stale (reinstall/template dropped defaults on top of
+        # the user's real settings). The backup wins.
+        shutil.copy2(_BACKUP_CONFIG_PATH, target)
+        console.print(
+            f"[green]Restored config from backup[/green] (local file was "
+            f"stale): {_BACKUP_CONFIG_PATH}"
+        )
+        return
+
+    if target_exists:
+        # First run with a hand-created/project-shipped file: seed the backup
+        # so a future reinstall can restore it.
+        _sync_backup(target)
         console.print(f"[yellow]Config already exists:[/yellow] {target}")
         return
 
-    # Restore from persistent backup if available (survives reinstalls).
-    if _BACKUP_CONFIG_PATH.exists():
+    # No local file. Restore from the persistent backup if available.
+    if backup_exists:
         _BACKUP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(_BACKUP_CONFIG_PATH, target)
         console.print(
@@ -489,8 +511,8 @@ def config_init() -> None:
         tomli_w.dump(default, f)
 
     # Seed the persistent backup too, so a direct edit to config/settings.toml
-    # made later (without ever opening the TUI) still survives a reinstall —
-    # load_config() mirrors the project file into the backup on every read.
+    # made later (without ever opening the TUI) is captured on the next
+    # load_config()/config_init reconcile, and survives a reinstall.
     _sync_backup(target)
 
     console.print(f"[green]Created config:[/green] {target}")

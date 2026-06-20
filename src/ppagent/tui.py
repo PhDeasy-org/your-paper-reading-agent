@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import select
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from ppagent.config import (
     PROJECT_ROOT,
     _DEFAULT_CONFIG_PATHS,
     _BACKUP_CONFIG_PATH,
+    _BACKUP_PATH_BAK,
     _LLM_ROLES,
 )
 from ppagent.providers import PROVIDERS, detect_provider, get_provider
@@ -38,6 +40,7 @@ class MenuItem:
         val_type: type = str,
         secret: bool = False,
         description: str = "",
+        set_value: Any | None = None,
     ):
         self.label = label
         self.target = target  # Submenu name or action ('save', 'discard', 'back')
@@ -45,6 +48,10 @@ class MenuItem:
         self.val_type = val_type
         self.secret = secret
         self.description = description
+        # When set, this item is a picker option: activating it writes
+        # ``set_value`` to ``key`` and returns to the previous menu. Used by
+        # the "-latest" model picker for Grok/Gemini.
+        self.set_value = set_value
 
 
 def _vendor_default_model(vendor_key: str) -> str:
@@ -112,6 +119,7 @@ def _llm_submenu_items(role: str, vendor_key: str) -> list[MenuItem]:
     Otherwise, it is hidden from the settings page, and is set automatically.
     """
     prefix = f"llms.{role}"
+    spec = get_provider(vendor_key)
     items = [
         MenuItem("<- Back to Providers", target="back"),
     ]
@@ -125,21 +133,38 @@ def _llm_submenu_items(role: str, vendor_key: str) -> list[MenuItem]:
             )
         )
 
+    items.append(
+        MenuItem(
+            "API Key",
+            key=f"{prefix}.api_key",
+            val_type=str,
+            secret=True,
+            description="Authentication key for the LLM API.",
+        )
+    )
+    items.append(
+        MenuItem(
+            "Model Name",
+            key=f"{prefix}.model",
+            val_type=str,
+            description="Target model (e.g. gpt-4o, deepseek-chat).",
+        )
+    )
+
+    # Providers with stable "-latest" aliases (Grok, Gemini) get a picker so
+    # the user can select one instead of typing the model name by hand.
+    if spec is not None and spec.latest_models:
+        items.append(
+            MenuItem(
+                "Latest Models",
+                target=f"llm_{role}_{vendor_key}_latest",
+                description="Pick a '-latest' model alias that auto-routes to "
+                "the newest version of each model family.",
+            )
+        )
+
     items.extend(
         [
-            MenuItem(
-                "API Key",
-                key=f"{prefix}.api_key",
-                val_type=str,
-                secret=True,
-                description="Authentication key for the LLM API.",
-            ),
-            MenuItem(
-                "Model Name",
-                key=f"{prefix}.model",
-                val_type=str,
-                description="Target model (e.g. gpt-4o, deepseek-chat).",
-            ),
             MenuItem(
                 "Temperature",
                 key=f"{prefix}.temperature",
@@ -455,6 +480,48 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
             )
         return items
 
+    # Check if "-latest" model picker menu.
+    # e.g., "llm_text_grok_latest", "llm_vision_gemini_latest"
+    # Must be matched BEFORE the generic vendor-setting regex below, otherwise
+    # its "_latest" suffix gets swallowed by the vendor_key capture group
+    # (e.g. "grok_latest").
+    picker_match = re.match(
+        r"^llm_(text|vision|searcher)_([a-z0-9_]+)_latest$", menu_id
+    )
+    if picker_match:
+        role, vendor_key = picker_match.groups()
+        spec = get_provider(vendor_key)
+        current_model = get_config_value(cfg, f"llms.{role}.model")
+        items = [
+            MenuItem("<- Back to Provider Settings", target="back"),
+        ]
+        if spec is not None:
+            for model in spec.latest_models:
+                label = model
+                if model == current_model:
+                    label = f"{label} [bold green](Active)[/bold green]"
+                items.append(
+                    MenuItem(
+                        label=label,
+                        key=f"llms.{role}.model",
+                        set_value=model,
+                        description=f"Use {model} (auto-routes to the newest "
+                        f"{spec.name} {model.rsplit('-latest', 1)[0]} version).",
+                    )
+                )
+        # Escape hatch: type any model name not listed above. Has a target
+        # (not set_value) so it routes through the free-text edit path.
+        items.append(
+            MenuItem(
+                label="Custom Model (type your own)...",
+                key=f"llms.{role}.model",
+                target=f"llm_{role}_{vendor_key}_custom_model",
+                description="Enter any model name by hand (for models not in "
+                "the list above).",
+            )
+        )
+        return items
+
     # Check if specific vendor setting menu
     # e.g., "llm_text_openai"
     vendor_setting_match = re.match(
@@ -514,6 +581,12 @@ def format_menu_item(item: MenuItem, current_val: Any, is_selected: bool) -> str
         label_part = item.label
 
     if item.key:
+        # Action / navigation items that also carry a key (e.g. the "Custom
+        # Model (type your own)" picker entry) render label-only: showing the
+        # underlying value would wrongly imply this item *is* that value.
+        if item.set_value is not None or item.target is not None:
+            return f"{marker}{label_part}"
+
         if item.val_type is bool:
             val_str = (
                 "[bold green]ON[/bold green]"
@@ -676,13 +749,18 @@ def save_config(cfg: AppConfig, path: Path) -> None:
     with open(path, "wb") as f:
         tomli_w.dump(data, f)
 
-    # Persistent backup — survives project directory reinstalls.
+    # Persistent backup — survives project directory reinstalls. Before
+    # overwriting, rotate the previous backup to a one-generation .bak so a
+    # bad overwrite remains undoable. Best-effort: backup failure must never
+    # block a save.
     try:
         _BACKUP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if _BACKUP_CONFIG_PATH.exists():
+            shutil.copy2(_BACKUP_CONFIG_PATH, _BACKUP_PATH_BAK)
         with open(_BACKUP_CONFIG_PATH, "wb") as fb:
             tomli_w.dump(data, fb)
     except OSError:
-        pass  # non-fatal: backup failure must not block a save
+        pass
 
 
 def run_config_tui() -> None:
@@ -760,6 +838,31 @@ def run_config_tui() -> None:
                     if item.target == "back":
                         if len(menu_stack) > 1:
                             menu_stack.pop()
+                    # The "-latest" model picker is a submenu of an *already
+                    # active* vendor — navigate in without calling
+                    # _switch_vendor, which would corrupt state by treating
+                    # the "_latest" suffix as a vendor key. Must be checked
+                    # before the vendor-switch regex below, which would
+                    # otherwise match (e.g. "grok_latest").
+                    elif re.match(
+                        r"^llm_(text|vision|searcher)_[a-z0-9_]+_latest$",
+                        item.target,
+                    ):
+                        menu_stack.append((item.target, 0))
+                    # "Custom Model (type your own)" picker entry: open the
+                    # free-text edit prompt, then stay on the picker menu so
+                    # the typed value is reflected via the Active marker.
+                    # Checked before the vendor-switch regex for the same
+                    # "_custom_model" suffix-swallowing reason as _latest.
+                    elif re.match(
+                        r"^llm_(text|vision|searcher)_[a-z0-9_]+_custom_model$",
+                        item.target,
+                    ):
+                        live.stop()
+                        curr_val = get_config_value(cfg, item.key or "")
+                        new_val = edit_setting(item.label, curr_val, str)
+                        set_config_value(cfg, item.key or "", new_val)
+                        live.start()
                     else:
                         # Detect vendor setting item (e.g. llm_text_openai),
                         # but NOT vendor *list* items (e.g. llm_text_vendor).
@@ -779,7 +882,14 @@ def run_config_tui() -> None:
                         else:
                             menu_stack.append((item.target, 0))
                 elif item.key:
-                    if item.val_type is bool:
+                    if item.set_value is not None:
+                        # Picker option (e.g. "-latest" model alias): write the
+                        # literal value and return to the previous menu so the
+                        # updated "Model Name" field is visible.
+                        set_config_value(cfg, item.key, item.set_value)
+                        if len(menu_stack) > 1:
+                            menu_stack.pop()
+                    elif item.val_type is bool:
                         toggle_config_value(cfg, item.key)
                     else:
                         live.stop()

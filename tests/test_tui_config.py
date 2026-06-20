@@ -1,6 +1,7 @@
 from ppagent.config import AppConfig
 from ppagent.tui import (
     get_menu_definition,
+    set_config_value,
     _switch_vendor,
 )
 from ppagent.providers import (
@@ -187,3 +188,125 @@ def test_vision_and_searcher_roles_independent():
     # Each role retains its own active provider.
     assert cfg.llms.vision.api_key == "glm-vision-key"
     assert cfg.llms.searcher.api_key == "ds-searcher-key"
+
+
+# ---------------------------------------------------------------------------
+# "-latest" / predefined model picker
+# ---------------------------------------------------------------------------
+
+
+def test_latest_models_nav_item_shown_for_every_provider_with_aliases():
+    """Every provider with a non-empty latest_models shows 'Latest Models'."""
+    cfg = AppConfig()
+    expected_with_picker = {
+        spec.key for spec in PROVIDERS if spec.latest_models
+    }
+    expected_without = {spec.key for spec in PROVIDERS if not spec.latest_models}
+
+    for vendor_key in expected_with_picker:
+        settings = get_menu_definition(f"llm_text_{vendor_key}", cfg)
+        assert any(item.label == "Latest Models" for item in settings), (
+            f"{vendor_key} should show Latest Models"
+        )
+
+    # Providers without a picker must not show the item.
+    for vendor_key in expected_without:
+        settings = get_menu_definition(f"llm_text_{vendor_key}", cfg)
+        assert not any(item.label == "Latest Models" for item in settings), (
+            f"{vendor_key} should NOT show Latest Models"
+        )
+
+
+def test_latest_models_nav_target_is_correct():
+    grok_settings = get_menu_definition("llm_text_grok", AppConfig())
+    nav = next(item for item in grok_settings if item.label == "Latest Models")
+    assert nav.target == "llm_text_grok_latest"
+
+    gemini_settings = get_menu_definition("llm_vision_gemini", AppConfig())
+    nav = next(item for item in gemini_settings if item.label == "Latest Models")
+    assert nav.target == "llm_vision_gemini_latest"
+
+
+def test_latest_models_picker_lists_vendor_aliases():
+    """The picker lists the vendor's latest_models, then a Custom Model entry."""
+    cfg = AppConfig()
+    grok_spec = get_provider("grok")
+    assert grok_spec is not None
+
+    picker = get_menu_definition("llm_text_grok_latest", cfg)
+    assert picker[0].target == "back"
+
+    # Predefined options carry set_value; the trailing Custom Model entry does not.
+    predefined = [o for o in picker[1:] if o.set_value is not None]
+    assert [o.set_value for o in predefined] == list(grok_spec.latest_models)
+
+    for opt in predefined:
+        assert opt.key == "llms.text.model"
+
+
+def test_picker_always_ends_with_custom_model_entry():
+    """Every picker menu ends with a 'Custom Model (type your own)' entry.
+
+    It carries the role's model key (so the typed value lands in the right
+    place) but uses a target (not set_value) so it routes through the
+    free-text edit path instead of the picker write-and-pop path.
+    """
+    cfg = AppConfig()
+    for vendor_key in ("grok", "openai", "minimax", "qwen"):
+        picker = get_menu_definition(f"llm_text_{vendor_key}_latest", cfg)
+        last = picker[-1]
+        assert last.label == "Custom Model (type your own)..."
+        assert last.key == "llms.text.model"
+        assert last.set_value is None
+        assert last.target == f"llm_text_{vendor_key}_custom_model"
+
+
+def test_latest_models_picker_marks_current_model_active():
+    cfg = AppConfig()
+    cfg.llms.text.model = "grok-3-latest"
+
+    picker = get_menu_definition("llm_text_grok_latest", cfg)
+    # Only consider the predefined options for the Active marker; the Custom
+    # Model entry never carries it.
+    predefined = [o for o in picker if o.set_value is not None]
+    active = [o for o in predefined if "Active" in o.label]
+    assert len(active) == 1
+    assert active[0].set_value == "grok-3-latest"
+
+    inactive = [o for o in predefined if o.set_value != "grok-3-latest"]
+    assert all("Active" not in o.label for o in inactive)
+
+    # The Custom Model entry is never marked active.
+    custom = picker[-1]
+    assert "Active" not in custom.label
+
+
+def test_picker_set_value_branch_writes_model_and_is_idempotent():
+    """Selecting a picker option must write the model to the role's config.
+
+    This mirrors the run_config_tui handler: ``set_config_value`` with the
+    item's ``set_value``.  Exercised directly (rather than via the raw-keypress
+    loop) because the loop needs a real TTY.
+    """
+    cfg = AppConfig()
+    picker = get_menu_definition("llm_text_grok_latest", cfg)
+    target = next(o for o in picker if o.set_value == "grok-4-latest")
+
+    set_config_value(cfg, target.key, target.set_value)
+    assert cfg.llms.text.model == "grok-4-latest"
+
+
+def test_latest_picker_menu_id_not_misrouted_to_vendor_settings():
+    """The '_latest' suffix must not be captured as a vendor key.
+
+    Regression guard: the generic vendor-settings regex
+    ``^llm_(text|vision|searcher)_([a-z0-9_]+)$`` would otherwise swallow
+    "grok_latest" from "llm_text_grok_latest". The picker menu definition
+    resolves it instead.
+    """
+    cfg = AppConfig()
+    # If misrouted to _llm_submenu_items, the result would contain "API Key"
+    # and "Model Name". A picker menu contains "back" + alias options only.
+    picker = get_menu_definition("llm_text_grok_latest", cfg)
+    assert not any(item.key == "llms.text.api_key" for item in picker)
+    assert not any(item.label == "Model Name" for item in picker)

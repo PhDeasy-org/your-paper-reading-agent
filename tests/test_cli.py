@@ -157,6 +157,38 @@ def test_cli_config_init(tmp_path):
         assert "Config already exists" in result_again.stdout
 
 
+def test_cli_config_init_restores_stale_target_from_backup(tmp_path):
+    """Gap #2 fix: when a stale settings.toml exists but differs from the
+    backup, config_init restores the backup over it instead of early-returning.
+    """
+    import tomllib
+
+    runner = CliRunner()
+    backup = tmp_path / "backup" / "settings.toml"
+    target = tmp_path / "config" / "settings.toml"
+
+    # Backup holds the user's real keys; a reinstall dropped stale defaults
+    # at the project path.
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    backup.write_text('[llms.text]\napi_key = "sk-REAL-KEY"\n')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('[llms.text]\napi_key = "sk-your-key-here"\n')
+
+    with patch("ppagent.cli.PROJECT_ROOT", tmp_path), patch(
+        "ppagent.cli._BACKUP_CONFIG_PATH", backup
+    ), patch("ppagent.config._BACKUP_CONFIG_PATH", backup):
+        result = runner.invoke(app, ["config", "init"])
+        assert result.exit_code == 0
+        assert "Restored config from backup" in result.stdout
+        assert "stale" in result.stdout
+
+    # The local file now reflects the backup, not the stale defaults.
+    raw = tomllib.load(target.open("rb"))
+    assert raw["llms"]["text"]["api_key"] == "sk-REAL-KEY"
+    # Backup untouched.
+    assert tomllib.load(backup.open("rb"))["llms"]["text"]["api_key"] == "sk-REAL-KEY"
+
+
 def test_paper_published_at_parsing():
     from datetime import datetime
 
