@@ -260,12 +260,12 @@ class LLMClient:
 
     def _clamp_max_tokens(self, max_tokens: int | None) -> int:
         val = max_tokens or self.config.max_tokens
-        if val > 16384:
+        if val > 16384 * 2:
             logger.warning(
-                "max_tokens %d is abnormally high for output completion; clamping to 16384",
+                "max_tokens %d is abnormally high for output completion; clamping to 16384 * 2",
                 val,
             )
-            return 16384
+            return 16384 * 2
         return val
 
     def chat(

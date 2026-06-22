@@ -103,13 +103,10 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="gemini-2.5-flash-latest",
         url_patterns=("googleapis.com", "google"),
         thinking_extra_body=_REASONING_MEDIUM,
-        # Source: ai.google.dev/gemini-api/docs/changelog. gemini-pro-latest
-        # was RENAMED to gemini-3-pro-preview; gemini-flash-latest is still a
-        # live alias (now pointing at a Gemini 3 Flash preview).
+        # Source: ai.google.dev/gemini-api/docs/changelog.
         latest_models=(
-            "gemini-3-pro-preview",
+            "gemini-3.1-pro-preview",
             "gemini-flash-latest",
-            "gemini-2.5-flash-latest",
         ),
     ),
     ProviderSpec(
@@ -120,10 +117,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         url_patterns=("anthropic.com",),
         thinking_extra_body=_THINKING_ENABLED,
         # Source: platform.claude.com/docs/en/about-claude/models/overview.
-        # Claude Opus/Sonnet 4 retire 2026-06-15; the live point releases are
-        # opus-4-1, sonnet-4-6, and haiku-4-5.
         latest_models=(
-            "claude-opus-4-1",
+            "claude-opus-4-8",
             "claude-sonnet-4-6",
             "claude-haiku-4-5",
         ),
@@ -136,10 +131,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         url_patterns=("dashscope", "aliyuncs.com"),
         thinking_extra_body=_QWEN_THINKING,
         thinking_incompatible_with_tools=True,
-        # Source: help.aliyun.com/zh/model-studio/models (Model Studio model
-        # list). qwen3.7-max is the flagship; 3.7-plus / 3.6-plus are the
-        # high-performance tiers.
-        latest_models=("qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"),
+        # Source: help.aliyun.com/zh/model-studio/models
+        latest_models=("qwen3.7-max", "qwen3.7-plus"),
     ),
     # kimi_cn must precede kimi_ai: "moonshot.cn"/"kimi.ai" are checked before
     # the broader "moonshot.ai" pattern. The patterns do not actually overlap,
@@ -152,9 +145,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         url_patterns=("moonshot.cn", "kimi.ai"),
         thinking_extra_body=_THINKING_ENABLED,
         thinking_incompatible_with_tools=True,
-        # Source: platform.kimi.com/docs/models. The kimi-k2 series was
-        # discontinued 2026-05-25; kimi-k2.7-code (coding) and kimi-k2.6
-        # (flagship) are the current models.
+        # Source: platform.kimi.com/docs/models.
         latest_models=("kimi-k2.7-code", "kimi-k2.6"),
     ),
     ProviderSpec(
@@ -177,7 +168,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         key="zai",
         name="Z.AI (Coding Token Plan)",
         base_url="https://api.z.ai/api/coding/paas/v4",
-        default_model="glm-4.6",
+        default_model="glm-5.2",
         url_patterns=("z.ai/api/coding",),
         thinking_extra_body=_THINKING_ENABLED,
     ),
@@ -188,22 +179,19 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="glm-4-plus",
         url_patterns=("bigmodel.cn", "z.ai"),
         thinking_extra_body=_THINKING_ENABLED,
-        # Source: docs.bigmodel.cn/cn/guide/start/model-overview. glm-5.2 is
-        # the new flagship; glm-5 the base; glm-5v-turbo the vision variant.
-        # (There is no standalone glm-5-flash — flash lives in the 4.x line.)
-        latest_models=("glm-5.2", "glm-5", "glm-5v-turbo"),
+        # Source: docs.bigmodel.cn/cn/guide/start/model-overview. 
+        latest_models=("glm-5.2", "glm-5v-turbo"),
     ),
     ProviderSpec(
         key="grok",
         name="Grok (xAI)",
         base_url="https://api.x.ai/v1",
-        default_model="grok-2-latest",
+        default_model="grok-latest",
         url_patterns=("x.ai",),
         thinking_extra_body=_REASONING_MEDIUM,
         supports_responses_api=True,
-        # xAI documents "<model>-latest" aliases that auto-route to the newest
-        # version of each Grok family. grok-4-latest is the current flagship.
-        latest_models=("grok-4-latest", "grok-3-latest", "grok-2-latest"),
+        # xAI documents "<model>-latest" aliases that auto-route to the newest version of each Grok family.
+        latest_models=("grok-4.3-latest", "grok-4-latest"),
     ),
     ProviderSpec(
         key="stepfun",
@@ -212,22 +200,18 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="step-1-8k",
         url_patterns=("stepfun",),
         thinking_extra_body=_REASONING_MEDIUM,
-        # Source: platform.stepfun.com/docs/zh/guides/model-migration. step-3
-        # is deprecated → migrate to step-3.7-flash; step-3.5-flash is the
-        # open-source foundation model.
+        # Source: platform.stepfun.com/docs/zh/guides/model-migration.
         latest_models=("step-3.7-flash", "step-3.5-flash"),
     ),
     ProviderSpec(
         key="minimax",
         name="MiniMax",
         base_url="https://api.minimax.io/v1",
-        default_model="abab6.5-chat",
+        default_model="MiniMax-M3",
         url_patterns=("minimax",),
         thinking_extra_body=_THINKING_ENABLED,
-        # Source: minimax.io / platform.minimaxi.com. MiniMax-M3 is the current
-        # frontier coding & agentic model (1M context). Casing per the official
-        # site.
-        latest_models=("MiniMax-M3",),
+        # Source: minimax.io / platform.minimaxi.com.
+        latest_models=("MiniMax-M3", "MiniMax-M2.7"),
     ),
     ProviderSpec(
         key="mimo",
@@ -241,26 +225,24 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         key="doubao",
         name="Doubao (ByteDance)",
         base_url="https://ark.cn-beijing.volces.com/api/v3",
-        default_model="doubao-pro-32k",
+        default_model="doubao-seed-2-0-lite-260215",
         url_patterns=("volces.com", "volcengine.com"),
         thinking_extra_body=_THINKING_ENABLED,
         # Source: volcengine.com/docs/82379/1330310 (火山方舟 model list,
-        # dated 2026.05.29). The current generation is the Seed series;
-        # the classic doubao-pro/1-5-pro line is discontinued.
+        # dated 2026.05.29).
         latest_models=(
-            "doubao-seed-2-0-pro",
-            "doubao-seed-2-0-mini",
-            "doubao-seed-1-6",
+            "doubao-seed-2-0-pro-260215",
+            "doubao-seed-2-0-lite-260215",
         ),
     ),
     ProviderSpec(
         key="tencent",
         name="Tencent Hunyuan",
-        base_url="https://api.hunyuan.cloud.tencent.com",
-        default_model="hunyuan-pro",
-        url_patterns=("tencent.com", "hunyuan"),
-        # Hunyuan exposes no documented thinking parameter; leave as None.
-        thinking_extra_body=None,
+        base_url="https://tokenhub.tencentmaas.com/v1",
+        default_model="hy3-preview",
+        url_patterns=("tencent.com", "tokenhub", "hto"),
+        thinking_extra_body=_THINKING_ENABLED,
+        latest_models=("hy3-preview",),
     ),
     ProviderSpec(
         key="custom",
