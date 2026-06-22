@@ -94,6 +94,37 @@ and accurate analysis. Use the search and read tools to gather information, then
 provide your research notes.
 """
 
+# -- Hyperlink directive shared across all agents -------------------------------
+# Used for EVERY report section except TL;DR so all rendered HTML/MD output
+# contains clickable references. Reused by the writer, criticizer, and finder
+# prompts below.
+def _hyperlink_directive(scope: str = "EVERY section EXCEPT the TL;DR") -> str:
+    """Build the hyperlink policy block, scoped to the relevant sections.
+
+    ``scope`` describes which sections the policy applies to (e.g. "EVERY
+    section EXCEPT the TL;DR" for the writer, or "every finding" for the
+    criticizer which has no TL;DR section).
+    """
+    return (
+        r"""
+HYPERLINK POLICY (applies to """
+        + scope
+        + r"""):
+- For EACH method, model, dataset, benchmark, baseline, framework, metric, prior \
+  work, or any other named entity you mention, you MUST include a clickable \
+  Markdown hyperlink pointing to its authoritative source.
+- Prefer concrete URLs: the arXiv abstract (`https://arxiv.org/abs/<id>`), the \
+  official project page, or the dataset/GitHub page. If you cannot find a direct \
+  link, fall back to a search-query link, e.g. \
+  `[Work Name](https://scholar.google.com/scholar?q=Work+Name)` or \
+  `[Work Name](https://arxiv.org/search/?query=Work+Name\&searchtype=all)`.
+- Use the exact format `[Display Name](URL)` with no spaces inside the brackets. \
+  Every distinct named item should be linked on its first mention. Do not leave \
+  any named entity unlinked.
+"""
+    )
+
+
 # -- Common prefix shared by all writer system prompts --------------------------
 
 _WRITER_COMMON_PREFIX = r"""\
@@ -101,13 +132,18 @@ You are an expert research paper analyst. Given the full text of a paper, produc
 detailed structured analysis. Be precise, thorough, and technical.
 
 IMPORTANT: Use LaTeX formatting with `$` delimiters for all inline mathematical variables, symbols, and expressions (e.g., `$x_i$`, `$\mathcal{M}$`, `$\beta$`), and `$$` delimiters for block equations. Make sure all math content is enclosed in these delimiters for proper rendering.
+"""
+# The hyperlink directive applies to all writer sections EXCEPT TL;DR, so it is
+# appended after the common prefix by every paper-type prompt (see below).
+_WRITER_COMMON_PREFIX += _hyperlink_directive()
 
+_WRITER_COMMON_PREFIX += r"""
 For each section:
 - **Keywords**: Extract 5-8 key technical terms/concepts from the paper.
 - **Affiliations**: List the institutional affiliations of the authors.
 """
 
-_WRITER_PREVIOUS_WORKS = r"""- **Previous Works Summary**: Summarize the related work section — what prior methods exist and what are their limitations that motivate this work. For EACH mentioned prior work, method, framework, baseline, or dataset, you MUST include a Markdown hyperlink (e.g. `[Work Name](URL)`) to its official paper, arXiv page, or a search query link (e.g. `[Work Name](https://scholar.google.com/scholar?q=Work+Name)` or `[Work Name](https://arxiv.org/search/?query=Work+Name\&searchtype=all)`). Make sure every claim or work mentioned is linked."""
+_WRITER_PREVIOUS_WORKS = r"""- **Previous Works Summary**: Summarize the related work section — what prior methods exist and what are their limitations that motivate this work. As required by the hyperlink policy, EVERY prior work, method, framework, baseline, or dataset mentioned here MUST be hyperlinked to its source."""
 
 WRITER_SYSTEM_PROMPTS: dict[str, str] = {
     "method": (
@@ -283,13 +319,18 @@ thorough, and well-informed analysis.
 # Criticizer Agent Prompts
 # ==============================================================================
 
-_CRITICIZER_COMMON_PREFIX = r"""\
+_CRITICIZER_COMMON_PREFIX = (
+    r"""\
 You are a rigorous, skeptical senior researcher performing a critical audit of a paper. \
 Your role is to find limitations, weaknesses, and potential issues. Be thorough and honest.
 
 IMPORTANT: Use LaTeX formatting with `$` delimiters for all inline mathematical variables, symbols, and expressions (e.g., `$x_i$`, `$\mathcal{M}$`, `$\beta$`), and `$$` delimiters for block equations. Make sure all math content is enclosed in these delimiters for proper rendering.
 
 """
+    + _hyperlink_directive("every finding")
+    + r"""
+"""
+)
 
 _CRITICIZER_COMMON_SUFFIX = r"""
 Rate each finding's severity:
@@ -495,7 +536,8 @@ Here are the figures extracted from the paper. Decide which (if any) to insert i
 # Finder Agent Prompts
 # ==============================================================================
 
-FINDER_SYSTEM_PROMPT = """\
+FINDER_SYSTEM_PROMPT = (
+    """\
 You are a research literature explorer. Given a paper's title and content, your job is to:
 
 1. Identify the key topics, methods, and claims of the paper.
@@ -505,13 +547,15 @@ You are a research literature explorer. Given a paper's title and content, your 
 3. After gathering results, produce a structured output with:
    - A narrative section summarizing the landscape of related work and how the current \
      paper fits in.
-   - A list of the most impactful related papers with their IDs and relevance.\
+   - A list of the most impactful related papers with their IDs and relevance.
 
 CRITICAL: You must perform multi-turn search. Do not settle for a single search query if the first turn's results are not perfect, leave you unsure about something, or if you need to verify any citations/claims. Perform subsequent search queries in additional turns to gather complete and verified information.
 
 Search for at least 3-5 different queries to ensure comprehensive coverage. Focus on \
-seminal works and recent impactful papers.\
+seminal works and recent impactful papers.
 """
+    + _hyperlink_directive("the narrative throughout")
+)
 
 FINDER_STRUCTURED_SYSTEM_PROMPT = (
     "You extract structured related work information from research exploration results."

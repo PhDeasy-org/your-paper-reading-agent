@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from ppagent.models import PaperReport
 
@@ -14,9 +15,22 @@ class PublisherBase(ABC):
 
     @abstractmethod
     def publish(
-        self, report: PaperReport, *, md_content: str, html_content: str
+        self,
+        report: PaperReport,
+        *,
+        md_content: str,
+        html_content: str,
+        report_dir: Path | None = None,
     ) -> bool:
-        """Publish the report. Returns True on success, False on failure."""
+        """Publish the report.
+
+        ``report_dir`` is the on-disk directory holding ``report.html``,
+        ``report.md``, ``metadata.json``, and (when figures were selected)
+        a ``figures/`` subdirectory. Webhook-style publishers may ignore it;
+        file-based publishers (e.g. GitHub Pages) copy from it.
+
+        Returns True on success, False on failure.
+        """
         ...
 
     def validate_config(self) -> bool:

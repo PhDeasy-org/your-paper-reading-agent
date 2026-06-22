@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 from rich.console import Console
@@ -138,7 +139,9 @@ class PaperPipeline:
         if collected:
             self.console.print()  # newline after streamed prose
         if result.success:
-            self.console.print(f"  [green]✓[/green] {label} agent completed successfully.")
+            self.console.print(
+                f"  [green]✓[/green] {label} agent completed successfully."
+            )
         else:
             self.console.print(f"  [red]✗[/red] {label} agent failed: {result.error}")
         return result
@@ -476,7 +479,7 @@ class PaperPipeline:
             "[dim]Formatting, generating LaTeX equations, and writing report files...[/dim]",
             spinner="dots",
         ):
-            report, _, _ = self.assembler.assemble(
+            report, md_content, html_content = self.assembler.assemble(
                 paper=paper,
                 writer_result=writer_result,
                 finder_result=finder_result,
@@ -488,8 +491,73 @@ class PaperPipeline:
             )
             self.console.print("  [green]✓[/green] Report assembled successfully!")
 
+        # Publishing is opt-in (publish.enabled) and best-effort: each enabled
+        # publisher runs independently and failures are non-fatal.
+        self._publish_report(
+            report,
+            md_content=md_content,
+            html_content=html_content,
+            report_dir=paper_dir,
+        )
+
         logger.info("Report generated for %s: %s", paper_id, paper.title)
         return report
+
+    def _publish_report(
+        self,
+        report: PaperReport,
+        *,
+        md_content: str,
+        html_content: str,
+        report_dir: Path,
+    ) -> None:
+        """Run every enabled publisher against the freshly generated report.
+
+        Each publisher is configured in ``config.publish.<name>``; this method
+        instantiates the enabled ones from their config sub-models and invokes
+        them. A publisher failure is logged but never aborts the pipeline or
+        sibling publishers.
+        """
+        if not self.config.publish.enabled:
+            return
+
+        from ppagent.publishers import get_publisher
+
+        # name → the config sub-model whose fields seed the publisher's ctor.
+        targets = [
+            ("notion", self.config.publish.notion),
+            ("wechat", self.config.publish.wechat),
+            ("github_pages", self.config.publish.github_pages),
+        ]
+        enabled = [(name, cfg) for name, cfg in targets if cfg.enabled]
+        if not enabled:
+            logger.debug("Publishing enabled but no individual publisher enabled.")
+            return
+
+        self.console.print("\n[bold cyan]📣 Publishing report...[/bold cyan]")
+        for name, cfg in enabled:
+            label = name.replace("_", " ").title()
+            try:
+                # ``enabled`` is a config-only flag, not a publisher ctor param;
+                # drop it before forwarding the rest of the config fields.
+                publisher = get_publisher(name, **cfg.model_dump(exclude={"enabled"}))
+                ok = publisher.publish(
+                    report,
+                    md_content=md_content,
+                    html_content=html_content,
+                    report_dir=report_dir,
+                )
+            except Exception as exc:  # never let a publisher abort the run
+                logger.exception("%s publisher raised", name)
+                ok = False
+                err = str(exc)
+            else:
+                err = ""
+            if ok:
+                self.console.print(f"  [green]✓[/green] {label}")
+            else:
+                msg = f" ({err})" if err else ""
+                self.console.print(f"  [red]✗[/red] {label}{msg}")
 
     def run(
         self,

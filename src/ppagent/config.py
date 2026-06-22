@@ -16,19 +16,17 @@ logger = logging.getLogger(__name__)
 # Project root — where pyproject.toml lives
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-_DEFAULT_CONFIG_PATHS = [
-    PROJECT_ROOT / "config" / "settings.toml",
-    Path.home() / ".config" / "ppagent" / "settings.toml",
-]
+# Single source of truth for user configuration. Lives outside the project
+# tree so it survives reinstalls (a fresh ``git clone`` wipes the project dir
+# but never ``~/.config``). The installer only seeds this path when empty; it
+# never copies anything into the project directory.
+CONFIG_DIR = Path.home() / ".config" / "ppagent"
+CONFIG_PATH = CONFIG_DIR / "settings.toml"
 
-# Persistent backup location — survives project directory reinstalls.
-# save_config() writes a copy here on every TUI save; load_config() falls back
-# to this file when no project-level settings.toml exists.
-_BACKUP_CONFIG_PATH = Path.home() / ".config" / "ppagent" / "settings.toml"
-
-# One-generation safety net. On every save, the *previous* backup is copied
-# here before being overwritten, so a single bad overwrite remains undoable.
-_BACKUP_PATH_BAK = _BACKUP_CONFIG_PATH.with_suffix(".toml.bak")
+# Legacy location from before the single-path model. Used only for a one-time
+# migration into ``CONFIG_PATH`` on first load, never read or written again
+# after that. May not exist for new installs.
+LEGACY_CONFIG_PATH = PROJECT_ROOT / "config" / "settings.toml"
 
 
 class LLMConfig(BaseModel):
@@ -92,24 +90,57 @@ class LLMsConfig(BaseModel):
 class SearchConfig(BaseModel):
     """Paper search/discovery configuration."""
 
-    default_date: str = Field(default="today", description="The default date to fetch papers for (e.g., 'today', 'yesterday').")
-    default_limit: int = Field(default=50, description="The default number of papers to fetch and evaluate.")
-    sort: str = Field(default="trending", description="How to sort the fetched papers (e.g., 'trending', 'recent').")
-    profile_path: str = Field(default="config/profile.md", description="Path to the Markdown file containing the user's interests profile.")
-    relevance_threshold: float = Field(default=0.6, description="Minimum score (0.0 to 1.0) required for a paper to be considered relevant.")
-    max_reports_per_run: int = Field(default=5, description="Maximum number of reports to generate in a single run.")
+    default_date: str = Field(
+        default="today",
+        description="The default date to fetch papers for (e.g., 'today', 'yesterday').",
+    )
+    default_limit: int = Field(
+        default=50, description="The default number of papers to fetch and evaluate."
+    )
+    sort: str = Field(
+        default="trending",
+        description="How to sort the fetched papers (e.g., 'trending', 'recent').",
+    )
+    profile_path: str = Field(
+        default="~/.config/ppagent/profile.md",
+        description="Path to the Markdown file containing the user's interests profile.",
+    )
+    relevance_threshold: float = Field(
+        default=0.6,
+        description="Minimum score (0.0 to 1.0) required for a paper to be considered relevant.",
+    )
+    max_reports_per_run: int = Field(
+        default=5, description="Maximum number of reports to generate in a single run."
+    )
 
 
 class ReportConfig(BaseModel):
     """Report generation configuration."""
 
-    output_dir: str = Field(default="output", description="Directory where generated reports will be saved.")
-    template_dir: str = Field(default="templates", description="Directory containing Jinja2 templates for reports.")
-    formats: list[str] = Field(default_factory=lambda: ["md", "html"], description="List of formats to output (e.g., 'md', 'html').")
-    download_pdf: bool = Field(default=True, description="Whether to download the paper's PDF for figure extraction.")
-    pdf_cache_dir: str = Field(default=".cache/pdfs", description="Directory to cache downloaded PDFs.")
-    custom_agents: list[str] = Field(default_factory=list, description="List of custom agent modules to load.")
-    language: str = Field(default="English", description="The language to generate the report in.")
+    output_dir: str = Field(
+        default="output", description="Directory where generated reports will be saved."
+    )
+    template_dir: str = Field(
+        default="templates",
+        description="Directory containing Jinja2 templates for reports.",
+    )
+    formats: list[str] = Field(
+        default_factory=lambda: ["md", "html"],
+        description="List of formats to output (e.g., 'md', 'html').",
+    )
+    download_pdf: bool = Field(
+        default=True,
+        description="Whether to download the paper's PDF for figure extraction.",
+    )
+    pdf_cache_dir: str = Field(
+        default=".cache/pdfs", description="Directory to cache downloaded PDFs."
+    )
+    custom_agents: list[str] = Field(
+        default_factory=list, description="List of custom agent modules to load."
+    )
+    language: str = Field(
+        default="English", description="The language to generate the report in."
+    )
     writer_research: bool = Field(
         default=True,
         description=(
@@ -131,10 +162,18 @@ class ReportConfig(BaseModel):
 class SchedulerConfig(BaseModel):
     """Auto-fetch scheduler configuration."""
 
-    enabled: bool = Field(default=False, description="Whether the auto-fetch scheduler is enabled.")
-    cron_hour: int = Field(default=8, description="The hour of the day (0-23) to run the scheduler.")
-    cron_minute: int = Field(default=0, description="The minute of the hour (0-59) to run the scheduler.")
-    timezone: str = Field(default="Asia/Shanghai", description="The timezone to use for the scheduler.")
+    enabled: bool = Field(
+        default=False, description="Whether the auto-fetch scheduler is enabled."
+    )
+    cron_hour: int = Field(
+        default=8, description="The hour of the day (0-23) to run the scheduler."
+    )
+    cron_minute: int = Field(
+        default=0, description="The minute of the hour (0-59) to run the scheduler."
+    )
+    timezone: str = Field(
+        default="Asia/Shanghai", description="The timezone to use for the scheduler."
+    )
 
 
 class WechatPublishConfig(BaseModel):
@@ -143,16 +182,28 @@ class WechatPublishConfig(BaseModel):
     secret: str = ""
 
 
-class BlogPublishConfig(BaseModel):
-    enabled: bool = False
-    webhook_url: str = ""
-    api_key: str = ""
-
-
 class NotionPublishConfig(BaseModel):
     enabled: bool = False
     api_key: str = ""
     database_id: str = ""
+
+
+class GithubPagesPublishConfig(BaseModel):
+    """Publish reports to a GitHub Pages blog.
+
+    The user owns a Pages-enabled repository; ppagent copies each generated
+    report directory into a local working copy of that repo and commits +
+    pushes it. GitHub Pages then serves the static files. Enabling Pages on
+    the repo and choosing the served branch is a one-time manual step on
+    GitHub — ppagent only pushes files.
+    """
+
+    enabled: bool = False
+    username: str = ""
+    repo: str = ""
+    repo_path: str = ""
+    branch: str = "main"
+    posts_subdir: str = "papers"
 
 
 class PublishConfig(BaseModel):
@@ -160,8 +211,10 @@ class PublishConfig(BaseModel):
 
     enabled: bool = False
     wechat: WechatPublishConfig = Field(default_factory=WechatPublishConfig)
-    blog: BlogPublishConfig = Field(default_factory=BlogPublishConfig)
     notion: NotionPublishConfig = Field(default_factory=NotionPublishConfig)
+    github_pages: GithubPagesPublishConfig = Field(
+        default_factory=GithubPagesPublishConfig
+    )
 
 
 class AppConfig(BaseModel):
@@ -188,7 +241,7 @@ class AppConfig(BaseModel):
 
     @property
     def profile_path(self) -> Path:
-        p = Path(self.search.profile_path)
+        p = Path(self.search.profile_path).expanduser()
         return p if p.is_absolute() else self.root / p
 
     @property
@@ -247,7 +300,11 @@ def _apply_env_overrides(raw: dict[str, Any]) -> dict[str, Any]:
         "PPA_NOTION_API_KEY": ("publish", "notion", "api_key"),
         "PPA_WECHAT_APPID": ("publish", "wechat", "appid"),
         "PPA_WECHAT_SECRET": ("publish", "wechat", "secret"),
-        "PPA_BLOG_API_KEY": ("publish", "blog", "api_key"),
+        "PPA_GH_PAGES_USERNAME": ("publish", "github_pages", "username"),
+        "PPA_GH_PAGES_REPO": ("publish", "github_pages", "repo"),
+        "PPA_GH_PAGES_REPO_PATH": ("publish", "github_pages", "repo_path"),
+        "PPA_GH_PAGES_BRANCH": ("publish", "github_pages", "branch"),
+        "PPA_GH_PAGES_POSTS_SUBDIR": ("publish", "github_pages", "posts_subdir"),
     }
 
     # LLM overrides → applied to each role under llms.<role>.<field>
@@ -272,108 +329,58 @@ def _apply_env_overrides(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
-def _sync_backup(source: Path) -> None:
-    """Mirror ``source`` into the persistent backup at ``_BACKUP_CONFIG_PATH``.
+def _migrate_legacy_config_once() -> Path:
+    """Copy the legacy project config into ``CONFIG_PATH`` if needed.
 
-    The backup survives a project-directory reinstall (the project tree is wiped
-    by a fresh ``git clone``), so this is what lets the user's keys and provider
-    settings persist. ``save_config()`` already kept the backup in sync on TUI
-    save, but a user who edits ``config/settings.toml`` directly — or who runs
-    any CLI command without opening the TUI — would otherwise never seed the
-    backup, and lose everything on the next reinstall.
+    Before the single-path model, config lived at ``config/settings.toml``
+    inside the project tree (wiped on every reinstall). On the first load
+    after upgrade, if ``CONFIG_PATH`` doesn't yet exist but the legacy file
+    does, we move the user's real settings over once. After that the legacy
+    file is never read or written again.
 
-    This is best-effort and non-fatal: a backup write failure must never block
-    loading config. ``source`` must not already be the backup file itself
-    (avoids a redundant in-place copy and the TUI's backup-as-source path).
+    Best-effort and non-fatal: a migration failure must never block loading
+    config — the caller simply falls back to defaults.
     """
+    if CONFIG_PATH.exists():
+        return CONFIG_PATH
+    if not LEGACY_CONFIG_PATH.exists():
+        return CONFIG_PATH
     try:
-        backup = _BACKUP_CONFIG_PATH
-        if source.resolve() == backup.resolve():
-            return
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, backup)
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(LEGACY_CONFIG_PATH, CONFIG_PATH)
+        logger.info(
+            "Migrated config from %s to %s (one-time).",
+            LEGACY_CONFIG_PATH,
+            CONFIG_PATH,
+        )
     except OSError:
-        logger.debug("Failed to mirror config backup", exc_info=True)
-
-
-def _files_equal(a: Path, b: Path) -> bool:
-    """Byte-compare two files. ``False`` if either is missing/unreadable."""
-    try:
-        return a.read_bytes() == b.read_bytes()
-    except OSError:
-        return False
-
-
-def _reconcile_config(explicit_path: Path | None) -> Path | None:
-    """Resolve which config file to load, making the backup authoritative.
-
-    The persistent backup is the source of truth (it survives reinstalls); the
-    project-level ``config/settings.toml`` is a transient, gitignored working
-    copy that can be recreated with stale defaults by a reinstall or a stray
-    template. The previous behavior mirrored project → backup on *every* read,
-    which let a stale project file silently destroy the user's real keys.
-
-    Reconciliation rules (backup always wins on conflict):
-
-    * ``explicit_path`` given → honor it verbatim (caller knows best; e.g. the
-      TUI loading from the backup, or tests pointing at a fixture).
-    * No backup exists → seed the backup from the project file (preserves the
-      first-run flow) and trust the project file.
-    * Backup exists, project file missing or differs → restore the backup over
-      the project file and load the backup.
-    * Both exist and are identical → no-op, load either.
-
-    All writes are best-effort and non-fatal. Returns the path to load from,
-    or ``None`` when no config exists anywhere (caller falls back to defaults).
-    """
-    if explicit_path is not None:
-        # An explicit path is caller-authored (e.g. the TUI loading from the
-        # backup, or tests pointing at a fixture); honor it verbatim and keep
-        # the long-standing contract that a missing explicit path raises.
-        if not explicit_path.exists():
-            raise FileNotFoundError(f"Config file not found: {explicit_path}")
-        return explicit_path
-
-    project = _DEFAULT_CONFIG_PATHS[0]
-    backup = _BACKUP_CONFIG_PATH
-    backup_exists = backup.exists()
-    project_exists = project.exists()
-
-    if not backup_exists and not project_exists:
-        return None
-
-    try:
-        if not backup_exists:
-            # First run: seed the backup so future reinstalls can restore it.
-            _sync_backup(project)
-            return project
-        if not project_exists or not _files_equal(project, backup):
-            # Backup is authoritative — a stale/missing project file must never
-            # overwrite it. Restore the working copy from the backup.
-            project.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(backup, project)
-        return backup if project == _DEFAULT_CONFIG_PATHS[0] else project
-    except OSError:
-        logger.debug("Config reconciliation failed; using fallback", exc_info=True)
-        # Fall back to whichever file is readable.
-        return project if project_exists else (backup if backup_exists else None)
+        logger.debug("Failed to migrate legacy config", exc_info=True)
+    return CONFIG_PATH
 
 
 def load_config(path: Path | None = None) -> AppConfig:
     """Load configuration from a TOML file.
 
-    Searches in order: explicit path → ./config/settings.toml → ~/.config/ppagent/settings.toml.
-    A legacy flat ``[llm]`` section is auto-migrated to ``[llms.*]``.
-    Environment variables override TOML values.
+    Reads from the single source of truth at ``~/.config/ppagent/settings.toml``
+    (which lives outside the project tree and survives reinstalls). On the
+    first load after upgrade, a legacy ``config/settings.toml`` is migrated
+    there once.
 
-    The persistent backup is authoritative: if a stale project-level
-    ``config/settings.toml`` (recreated with defaults by a reinstall) disagrees
-    with the backup, the backup wins and is restored over the project file.
+    An explicit ``path`` (e.g. tests pointing at a fixture) is honored
+    verbatim; a missing explicit path raises ``FileNotFoundError``. A legacy
+    flat ``[llm]`` section is auto-migrated to ``[llms.*]``. Environment
+    variables override TOML values. When no config file exists anywhere,
+    built-in defaults are returned.
     """
-    config_path = _reconcile_config(path)
+    if path is not None:
+        config_path = path
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+    else:
+        config_path = _migrate_legacy_config_once()
 
     raw: dict[str, Any] = {}
-    if config_path is not None:
+    if path is not None or config_path.exists():
         with open(config_path, "rb") as f:
             raw = tomllib.load(f)
 

@@ -1,5 +1,8 @@
-# ppagent configuration
-# Copy this file to settings.toml and edit as needed.
+# ppagent configuration (reference template).
+# The live config is read from and written to ~/.config/ppagent/settings.toml —
+# a single location outside the project tree that survives reinstalls. Copy
+# this file there and edit as needed:
+#   cp config/settings.example.toml ~/.config/ppagent/settings.toml
 
 [llm]
 base_url = "https://api.openai.com/v1"
@@ -13,7 +16,7 @@ timeout = 120
 default_date = "today"
 default_limit = 50
 sort = "trending"
-profile_path = "config/profile.md"
+profile_path = "~/.config/ppagent/profile.md"
 relevance_threshold = 0.6
 max_reports_per_run = 5
 
@@ -40,12 +43,15 @@ enabled = false
 appid = ""
 secret = ""
 
-[publish.blog]
-enabled = false
-webhook_url = ""
-api_key = ""
-
 [publish.notion]
 enabled = false
 api_key = ""
 database_id = ""
+
+[publish.github_pages]
+enabled = false
+username = ""           # GitHub username that owns the Pages repo
+repo = ""               # e.g. "my-paper-blog"
+repo_path = ""          # local clone path (must have push access)
+branch = "main"         # branch Pages serves from
+posts_subdir = "papers" # subfolder inside the repo where reports go

@@ -140,53 +140,51 @@ def test_cli_config_show(mock_config):
 
 def test_cli_config_init(tmp_path):
     runner = CliRunner()
-    # Redirect the persistent backup too — config_init now seeds it, and we must
-    # not clobber the developer's real ~/.config/ppagent/settings.toml.
-    backup = tmp_path / "backup" / "settings.toml"
-    with patch("ppagent.cli.PROJECT_ROOT", tmp_path), patch(
-        "ppagent.cli._BACKUP_CONFIG_PATH", backup
-    ), patch("ppagent.config._BACKUP_CONFIG_PATH", backup):
+    # Redirect the single config path into the sandbox — we must not touch the
+    # developer's real ~/.config/ppagent/settings.toml.
+    cfg_dir = tmp_path / "cfgdir"
+    cfg_path = cfg_dir / "settings.toml"
+    with (
+        patch("ppagent.cli.PROJECT_ROOT", tmp_path),
+        patch("ppagent.cli.CONFIG_DIR", cfg_dir),
+        patch("ppagent.cli.CONFIG_PATH", cfg_path),
+        patch("ppagent.config.CONFIG_PATH", cfg_path),
+    ):
         result = runner.invoke(app, ["config", "init"])
         assert result.exit_code == 0
-        assert (tmp_path / "config" / "settings.toml").exists()
-        # A fresh init also seeds the persistent backup so reinstalls can restore.
-        assert backup.exists()
+        assert cfg_path.exists()
+        # Nothing is written into the project directory.
+        assert not (tmp_path / "config" / "settings.toml").exists()
 
-        # Calling it again should print that it already exists
+        # Calling it again should print that it already exists.
         result_again = runner.invoke(app, ["config", "init"])
         assert "Config already exists" in result_again.stdout
 
 
-def test_cli_config_init_restores_stale_target_from_backup(tmp_path):
-    """Gap #2 fix: when a stale settings.toml exists but differs from the
-    backup, config_init restores the backup over it instead of early-returning.
-    """
+def test_cli_config_init_skips_when_config_exists(tmp_path):
+    """When CONFIG_PATH already exists, config_init is a no-op — it never
+    overwrites the user's real settings."""
     import tomllib
 
     runner = CliRunner()
-    backup = tmp_path / "backup" / "settings.toml"
-    target = tmp_path / "config" / "settings.toml"
+    cfg_dir = tmp_path / "cfgdir"
+    cfg_path = cfg_dir / "settings.toml"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text('[llms.text]\napi_key = "sk-REAL-KEY"\n')
 
-    # Backup holds the user's real keys; a reinstall dropped stale defaults
-    # at the project path.
-    backup.parent.mkdir(parents=True, exist_ok=True)
-    backup.write_text('[llms.text]\napi_key = "sk-REAL-KEY"\n')
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text('[llms.text]\napi_key = "sk-your-key-here"\n')
-
-    with patch("ppagent.cli.PROJECT_ROOT", tmp_path), patch(
-        "ppagent.cli._BACKUP_CONFIG_PATH", backup
-    ), patch("ppagent.config._BACKUP_CONFIG_PATH", backup):
+    with (
+        patch("ppagent.cli.PROJECT_ROOT", tmp_path),
+        patch("ppagent.cli.CONFIG_DIR", cfg_dir),
+        patch("ppagent.cli.CONFIG_PATH", cfg_path),
+        patch("ppagent.config.CONFIG_PATH", cfg_path),
+    ):
         result = runner.invoke(app, ["config", "init"])
         assert result.exit_code == 0
-        assert "Restored config from backup" in result.stdout
-        assert "stale" in result.stdout
+        assert "Config already exists" in result.stdout
 
-    # The local file now reflects the backup, not the stale defaults.
-    raw = tomllib.load(target.open("rb"))
+    # The real key is untouched.
+    raw = tomllib.load(cfg_path.open("rb"))
     assert raw["llms"]["text"]["api_key"] == "sk-REAL-KEY"
-    # Backup untouched.
-    assert tomllib.load(backup.open("rb"))["llms"]["text"]["api_key"] == "sk-REAL-KEY"
 
 
 def test_paper_published_at_parsing():

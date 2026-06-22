@@ -57,4 +57,4 @@ def load_custom_publishers(directory: Path | None = None) -> None:
 # Import built-in publishers so their @register_publisher decorators run
 from ppagent.publishers.wechat import WeChatPublisher  # noqa: F401, E402
 from ppagent.publishers.notion import NotionPublisher  # noqa: F401, E402
-from ppagent.publishers.blog import BlogPublisher  # noqa: F401, E402
+from ppagent.publishers.github_pages import GithubPagesPublisher  # noqa: F401, E402

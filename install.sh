@@ -141,15 +141,19 @@ fi
 
 header "Setting up configuration..."
 
-if [[ ! -f "$INSTALL_DIR/config/settings.toml" ]]; then
-    uv run ppagent config init
-    success "Config created at config/settings.toml"
-else
+# Config lives entirely in ~/.config/ppagent/ (outside the project tree so it
+# survives reinstalls). The installer only seeds that path when empty — it
+# never writes config/profile files into the project directory.
+CFG_DIR="$HOME/.config/ppagent"
+if [[ -f "$CFG_DIR/settings.toml" ]]; then
     success "Config already exists (skipping init)"
+else
+    mkdir -p "$CFG_DIR"
+    uv run ppagent config init
 fi
 
-if [[ ! -f "$INSTALL_DIR/config/profile.md" ]]; then
-    warn "No research profile found. Edit config/profile.md to set your interests."
+if [[ ! -f "$CFG_DIR/profile.md" ]]; then
+    warn "No research profile found. Run ppagent config or edit $CFG_DIR/profile.md to set your interests."
 fi
 
 # ─── Shell integration ───────────────────────────────────────────────────────

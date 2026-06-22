@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import select
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -20,10 +19,7 @@ import typer
 from ppagent.config import (
     AppConfig,
     load_config,
-    PROJECT_ROOT,
-    _DEFAULT_CONFIG_PATHS,
-    _BACKUP_CONFIG_PATH,
-    _BACKUP_PATH_BAK,
+    CONFIG_PATH,
     _LLM_ROLES,
 )
 from ppagent.providers import PROVIDERS, detect_provider, get_provider
@@ -225,7 +221,7 @@ MENUS: dict[str, list[MenuItem]] = {
         MenuItem(
             "Publishing Settings",
             target="publish",
-            description="Configure destinations to share discovered papers (Notion, WeChat, Blog).",
+            description="Configure destinations to share discovered papers (Notion, WeChat, GitHub Pages).",
         ),
     ],
     "llms": [
@@ -364,9 +360,9 @@ MENUS: dict[str, list[MenuItem]] = {
             description="Configure publishing to a WeChat Official Account.",
         ),
         MenuItem(
-            "Blog/Webhook Integration Settings",
-            target="publish_blog",
-            description="Configure publishing to a custom blog/webhook.",
+            "GitHub Pages Blog Settings",
+            target="publish_github_pages",
+            description="Configure publishing to a GitHub Pages blog repo.",
         ),
     ],
     "publish_notion": [
@@ -413,26 +409,43 @@ MENUS: dict[str, list[MenuItem]] = {
             description="WeChat Official Account App Secret.",
         ),
     ],
-    "publish_blog": [
+    "publish_github_pages": [
         MenuItem("<- Back to Publishing Settings", target="back"),
         MenuItem(
             "Enabled",
-            key="publish.blog.enabled",
+            key="publish.github_pages.enabled",
             val_type=bool,
-            description="Publish reports to a custom blog/webhook.",
+            description="Publish reports to a GitHub Pages blog.",
         ),
         MenuItem(
-            "Webhook URL",
-            key="publish.blog.webhook_url",
+            "GitHub Username",
+            key="publish.github_pages.username",
             val_type=str,
-            description="Target endpoint URL to send report data.",
+            description="GitHub username that owns the Pages repo.",
         ),
         MenuItem(
-            "API Key",
-            key="publish.blog.api_key",
+            "Repo Name",
+            key="publish.github_pages.repo",
             val_type=str,
-            secret=True,
-            description="Authorization API token for the blog endpoint.",
+            description="Name of the GitHub Pages repository (e.g. my-paper-blog).",
+        ),
+        MenuItem(
+            "Local Repo Path",
+            key="publish.github_pages.repo_path",
+            val_type=str,
+            description="Local working-copy path of the cloned Pages repo (must have push access).",
+        ),
+        MenuItem(
+            "Branch",
+            key="publish.github_pages.branch",
+            val_type=str,
+            description="Branch GitHub Pages serves from (push target).",
+        ),
+        MenuItem(
+            "Posts Subdirectory",
+            key="publish.github_pages.posts_subdir",
+            val_type=str,
+            description="Subfolder inside the repo where report directories are written.",
         ),
     ],
 }
@@ -535,11 +548,8 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
 
 
 def get_config_path() -> Path:
-    """Find current settings.toml path or return default."""
-    for candidate in _DEFAULT_CONFIG_PATHS:
-        if candidate.exists():
-            return candidate
-    return PROJECT_ROOT / "config" / "settings.toml"
+    """The single source-of-truth settings.toml path."""
+    return CONFIG_PATH
 
 
 def get_config_value(cfg: AppConfig, key_path: str) -> Any:
@@ -618,7 +628,7 @@ def make_ui(menu_id: str, selected_idx: int, cfg: AppConfig) -> Panel:
     title = Text.assemble(
         ("⚙  ", "bold purple"),
         ("ppagent Config Manager", "bold white"),
-        (f"  ({get_config_path().relative_to(PROJECT_ROOT)})", "dim"),
+        (f"  ({get_config_path()})", "dim"),
     )
 
     options_group = []
@@ -729,14 +739,12 @@ def edit_setting(name: str, current_value: Any, val_type: type) -> Any:
 
 
 def save_config(cfg: AppConfig, path: Path) -> None:
-    """Save the current configuration back to settings.toml.
+    """Save the current configuration back to ``path``.
 
     Before dumping, snapshot each role's currently-active LLMConfig into
     ``saved_vendors`` so the most recent edits are preserved for next time the
-    user re-enters that provider's page.
-
-    A persistent backup is also written to ``~/.config/ppagent/settings.toml``
-    so the user's settings survive project-directory reinstalls.
+    user re-enters that provider's page. ``path`` is the single source of
+    truth (``~/.config/ppagent/settings.toml``) — there is no separate backup.
     """
     import tomli_w
 
@@ -749,51 +757,19 @@ def save_config(cfg: AppConfig, path: Path) -> None:
     with open(path, "wb") as f:
         tomli_w.dump(data, f)
 
-    # Persistent backup — survives project directory reinstalls. Before
-    # overwriting, rotate the previous backup to a one-generation .bak so a
-    # bad overwrite remains undoable. Best-effort: backup failure must never
-    # block a save.
-    try:
-        _BACKUP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        if _BACKUP_CONFIG_PATH.exists():
-            shutil.copy2(_BACKUP_CONFIG_PATH, _BACKUP_PATH_BAK)
-        with open(_BACKUP_CONFIG_PATH, "wb") as fb:
-            tomli_w.dump(data, fb)
-    except OSError:
-        pass
-
 
 def run_config_tui() -> None:
     """Run the interactive TUI configuration loop."""
-    # Always prefer the persistent backup when available — it represents
-    # the user's last TUI save and survives project-directory reinstalls.
-    # The project-level settings.toml can be created with stale OpenAI defaults
-    # by `config_init`, or get corrupted when the user accidentally visits the
-    # "Custom OpenAI Compatible" vendor page and saves.  Loading from the
-    # backup avoids both scenarios.
-    if _BACKUP_CONFIG_PATH.exists():
-        cfg = load_config(_BACKUP_CONFIG_PATH)
-    else:
-        try:
-            cfg = load_config()
-        except Exception as e:
-            console.print(f"[red]Error loading configuration:[/red] {e}")
-            raise typer.Exit(1)
+    # Config lives at a single source-of-truth path (~/.config/ppagent/
+    # settings.toml). Load from and save back to that path directly — no
+    # separate backup, no project-file mirror.
+    try:
+        cfg = load_config(CONFIG_PATH)
+    except Exception as e:
+        console.print(f"[red]Error loading configuration:[/red] {e}")
+        raise typer.Exit(1)
 
-    # Keep the project-level file in sync so `ppagent run` / `ppagent search`
-    # (which call load_config() without the backup preference) see the same
-    # settings the TUI displays.  Write raw data only — do NOT call
-    # save_config() here: it mutates saved_vendors via _snapshot_active_vendor
-    # and overwrites the backup, which is the source of truth.
-    import tomli_w
-
-    project_config = PROJECT_ROOT / "config" / "settings.toml"
-    _data = cfg.model_dump()
-    _data.pop("root", None)
-    project_config.parent.mkdir(parents=True, exist_ok=True)
-    with open(project_config, "wb") as _f:
-        tomli_w.dump(_data, _f)
-    config_file = project_config
+    config_file = CONFIG_PATH
 
     # Navigation stack stores tuples of (menu_id, selected_idx)
     menu_stack: list[tuple[str, int]] = [("main", 0)]
@@ -825,7 +801,7 @@ def run_config_tui() -> None:
                 save_config(cfg, config_file)
                 live.stop()
                 console.print(
-                    f"[bold green]Configuration saved successfully to {config_file.relative_to(PROJECT_ROOT)}[/bold green]"
+                    f"[bold green]Configuration saved successfully to {config_file}[/bold green]"
                 )
                 return
             elif key == "x":

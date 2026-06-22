@@ -533,7 +533,7 @@ class LLMClient:
             return (
                 f"Authentication failed (HTTP 401). The API key is invalid or expired.\n"
                 f"  Config: {config_desc}\n"
-                f"  → Regenerate your API key at the provider's console and update config/settings.toml."
+                f"  → Regenerate your API key at the provider's console and update ~/.config/ppagent/settings.toml."
             )
         if isinstance(exc, openai.PermissionDeniedError):
             return (
@@ -546,7 +546,7 @@ class LLMClient:
             return (
                 f"Model not found (HTTP 404). The model name may be incorrect or unavailable.\n"
                 f"  Config: {config_desc}\n"
-                f"  → Verify the model name in config/settings.toml against the provider's "
+                f"  → Verify the model name in ~/.config/ppagent/settings.toml against the provider's "
                 f"available models list."
             )
         if isinstance(exc, openai.BadRequestError):

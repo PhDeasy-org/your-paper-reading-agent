@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import httpx
 
@@ -50,7 +51,12 @@ class WeChatPublisher(PublisherBase):
         return data["access_token"]
 
     def publish(
-        self, report: PaperReport, *, md_content: str, html_content: str
+        self,
+        report: PaperReport,
+        *,
+        md_content: str,
+        html_content: str,
+        report_dir: Path | None = None,
     ) -> bool:
         if not self.validate_config():
             return False

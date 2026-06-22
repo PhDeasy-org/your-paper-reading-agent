@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import httpx
 
@@ -33,7 +34,12 @@ class NotionPublisher(PublisherBase):
         return True
 
     def publish(
-        self, report: PaperReport, *, md_content: str, html_content: str
+        self,
+        report: PaperReport,
+        *,
+        md_content: str,
+        html_content: str,
+        report_dir: Path | None = None,
     ) -> bool:
         if not self.validate_config():
             return False

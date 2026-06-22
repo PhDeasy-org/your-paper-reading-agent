@@ -14,9 +14,8 @@ from ppagent.config import (
     AppConfig,
     load_config,
     PROJECT_ROOT,
-    _BACKUP_CONFIG_PATH,
-    _files_equal,
-    _sync_backup,
+    CONFIG_PATH,
+    CONFIG_DIR,
 )
 from ppagent.storage import Storage
 
@@ -390,9 +389,7 @@ def config_main(ctx: typer.Context) -> None:
 def config_show() -> None:
     """Show current configuration."""
     cfg = _load()
-    console.print(
-        f"[bold]Config loaded from:[/bold] {PROJECT_ROOT / 'config' / 'settings.toml'}"
-    )
+    console.print(f"[bold]Config loaded from:[/bold] {CONFIG_PATH}")
     console.print(
         f"  Text LLM (writer/finder/criticizer): {cfg.llms.text.model} @ {cfg.llms.text.base_url}"
     )
@@ -411,50 +408,22 @@ def config_show() -> None:
 
 @config_app.command("init")
 def config_init() -> None:
-    """Create a default settings.toml if it doesn't exist.
+    """Create a default settings.toml in ``~/.config/ppagent/`` if absent.
 
-    The persistent backup at ``~/.config/ppagent/settings.toml`` is
-    authoritative: it survives reinstalls, while ``config/settings.toml`` can
-    be recreated with stale OpenAI defaults by a reinstall or a stray template.
-    So when both exist and disagree, the backup is restored over the (stale)
-    local file — the user's real keys are never silently destroyed.
+    The config lives entirely outside the project tree (at ``CONFIG_PATH``)
+    so it survives reinstalls. This command writes only to that single path:
+    if a config already exists there, it does nothing. When the config dir is
+    empty it also seeds a starter ``profile.md`` from the bundled example if
+    available. It never writes anything into the project directory's
+    ``config/`` folder.
     """
+    import copy
     import shutil
     import tomli_w
 
-    target = PROJECT_ROOT / "config" / "settings.toml"
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    backup_exists = _BACKUP_CONFIG_PATH.exists()
-    target_exists = target.exists()
-
-    if target_exists and backup_exists:
-        if _files_equal(target, _BACKUP_CONFIG_PATH):
-            console.print(f"[yellow]Config already exists:[/yellow] {target}")
-            return
-        # Local file is stale (reinstall/template dropped defaults on top of
-        # the user's real settings). The backup wins.
-        shutil.copy2(_BACKUP_CONFIG_PATH, target)
-        console.print(
-            f"[green]Restored config from backup[/green] (local file was "
-            f"stale): {_BACKUP_CONFIG_PATH}"
-        )
-        return
-
-    if target_exists:
-        # First run with a hand-created/project-shipped file: seed the backup
-        # so a future reinstall can restore it.
-        _sync_backup(target)
-        console.print(f"[yellow]Config already exists:[/yellow] {target}")
-        return
-
-    # No local file. Restore from the persistent backup if available.
-    if backup_exists:
-        _BACKUP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(_BACKUP_CONFIG_PATH, target)
-        console.print(
-            f"[green]Restored config from backup:[/green] {_BACKUP_CONFIG_PATH}"
-        )
+    # One source of truth. Never touch the project tree for config.
+    if CONFIG_PATH.exists():
+        console.print(f"[yellow]Config already exists:[/yellow] {CONFIG_PATH}")
         return
 
     # Per-role LLM defaults: text (writer/finder/criticizer), vision
@@ -470,7 +439,6 @@ def config_init() -> None:
         "instructor_mode": "auto",
         "enable_thinking": False,
     }
-    import copy
 
     default = {
         "llms": {
@@ -484,7 +452,7 @@ def config_init() -> None:
             "default_date": "today",
             "default_limit": 50,
             "sort": "trending",
-            "profile_path": "config/profile.md",
+            "profile_path": "~/.config/ppagent/profile.md",
             "relevance_threshold": 0.6,
             "max_reports_per_run": 5,
         },
@@ -507,16 +475,23 @@ def config_init() -> None:
         },
     }
 
-    with open(target, "wb") as f:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_PATH, "wb") as f:
         tomli_w.dump(default, f)
 
-    # Seed the persistent backup too, so a direct edit to config/settings.toml
-    # made later (without ever opening the TUI) is captured on the next
-    # load_config()/config_init reconcile, and survives a reinstall.
-    _sync_backup(target)
+    # Seed a starter profile.md from the bundled example, if available, so the
+    # user has a concrete file to edit. Never overwrite an existing one.
+    profile_path = CONFIG_DIR / "profile.md"
+    if not profile_path.exists():
+        bundled = PROJECT_ROOT / "config" / "profile.md"
+        try:
+            if bundled.exists():
+                shutil.copy2(bundled, profile_path)
+        except OSError:
+            pass  # non-fatal — the user can create it via the TUI
 
-    console.print(f"[green]Created config:[/green] {target}")
-    console.print("Edit it to add your API key and customize settings.")
+    console.print(f"[green]Created config:[/green] {CONFIG_PATH}")
+    console.print("Edit it (or run `ppagent config`) to add your API key.")
 
 
 # ─── entry point ─────────────────────────────────────────────────────────────
