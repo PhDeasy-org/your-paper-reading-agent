@@ -130,6 +130,7 @@ class TestThinkingExtraBody:
             "https://ark.cn-beijing.volces.com/api/v3",  # doubao
             "https://open.bigmodel.cn/api/paas/v4",  # glm
             "https://api.z.ai/api/coding/paas/v4",  # zai
+            "https://api.hunyuan.cloud.tencent.com",  # tencent
         ]:
             assert thinking_extra_body_for(url) == expected, url
 
@@ -137,10 +138,6 @@ class TestThinkingExtraBody:
         assert thinking_extra_body_for(
             "https://dashscope.aliyuncs.com/compatible-mode/v1"
         ) == {"enable_thinking": True}
-
-    def test_tencent_has_no_thinking_param(self) -> None:
-        # Hunyuan exposes no documented thinking parameter.
-        assert thinking_extra_body_for("https://api.hunyuan.cloud.tencent.com") is None
 
     def test_custom_returns_none(self) -> None:
         assert thinking_extra_body_for(None) is None
@@ -219,33 +216,30 @@ class TestProviderSpecShape:
 
 # Verified (June 2026) model IDs per provider, keyed by provider key. These are
 # the exact strings surfaced in the TUI's "Latest Models" picker; the parametrized
-# tests below pin them so a typo'd/mis-pasted ID is caught.
+# tests below pin them so a typo'd/mis-pasted ID is caught. Mirrors the registry
+# in ppagent.providers exactly — that registry is the single source of truth.
 EXPECTED_LATEST_MODELS: dict[str, tuple[str, ...]] = {
     "openai": ("gpt-5.5", "gpt-5.4", "gpt-5.4-mini"),
     "deepseek": ("deepseek-v4-flash", "deepseek-v4-pro"),
     "mistral": ("mistral-medium-latest", "mistral-small-latest"),
-    "gemini": (
-        "gemini-3-pro-preview",
-        "gemini-flash-latest",
-        "gemini-2.5-flash-latest",
-    ),
+    "gemini": ("gemini-3.1-pro-preview", "gemini-flash-latest"),
     "anthropic": (
-        "claude-opus-4-1",
+        "claude-opus-4-8",
         "claude-sonnet-4-6",
         "claude-haiku-4-5",
     ),
-    "qwen": ("qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"),
+    "qwen": ("qwen3.7-max", "qwen3.7-plus"),
     "kimi_cn": ("kimi-k2.7-code", "kimi-k2.6"),
     "kimi_ai": ("kimi-k2.7-code", "kimi-k2.6"),
-    "glm": ("glm-5.2", "glm-5", "glm-5v-turbo"),
-    "grok": ("grok-4-latest", "grok-3-latest", "grok-2-latest"),
+    "glm": ("glm-5.2", "glm-5v-turbo"),
+    "grok": ("grok-4.3-latest", "grok-4-latest"),
     "stepfun": ("step-3.7-flash", "step-3.5-flash"),
-    "minimax": ("MiniMax-M3",),
+    "minimax": ("MiniMax-M3", "MiniMax-M2.7"),
     "doubao": (
-        "doubao-seed-2-0-pro",
-        "doubao-seed-2-0-mini",
-        "doubao-seed-1-6",
+        "doubao-seed-2-0-pro-260215",
+        "doubao-seed-2-0-lite-260215",
     ),
+    "tencent": ("hy3-preview",),
 }
 
 
@@ -273,8 +267,8 @@ class TestLatestModels:
         )
 
     def test_providers_without_picker(self) -> None:
-        """mimo, tencent, zai, custom intentionally have no picker."""
-        for key in ("mimo", "tencent", "zai", "custom"):
+        """mimo, zai, custom intentionally have no picker."""
+        for key in ("mimo", "zai", "custom"):
             assert get_provider(key).latest_models == (), key
 
     def test_gemini_default_is_not_the_shut_down_2_0_flash(self) -> None:
@@ -285,8 +279,8 @@ class TestLatestModels:
         assert spec.default_model.endswith("-latest")
 
     def test_gemini_does_not_offer_dead_pro_latest_alias(self) -> None:
-        """gemini-pro-latest was renamed to gemini-3-pro-preview; must not linger."""
+        """gemini-pro-latest was renamed to gemini-3.1-pro-preview; must not linger."""
         spec = get_provider("gemini")
         assert spec is not None
         assert "gemini-pro-latest" not in spec.latest_models
-        assert "gemini-3-pro-preview" in spec.latest_models
+        assert "gemini-3.1-pro-preview" in spec.latest_models

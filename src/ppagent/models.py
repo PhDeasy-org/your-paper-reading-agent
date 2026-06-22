@@ -23,6 +23,7 @@ class Paper(BaseModel):
     arxiv_url: str = Field(default="", description="The URL to the paper's landing page on arXiv.")
     pdf_url: str = Field(default="", description="The direct URL to download the paper's PDF.")
     hf_url: str = Field(default="", description="The URL to the paper's page on HuggingFace.")
+    github_repo: str = Field(default="", description="The official GitHub repository URL for the paper's code (if any).")
 
     def model_post_init(self, __context: Any) -> None:
         if not self.arxiv_url and self.id:
@@ -161,6 +162,14 @@ class WriterOutput(BaseModel):
     )
     method_details: str = ""
     performance_evaluation: str = ""
+    blog_url: str = Field(
+        default="",
+        description=(
+            "The URL of an official blog post / webpage explaining this paper (e.g. on "
+            "the authors' company or project blog), if one is linked in the paper text. "
+            "Leave empty if none is mentioned. Must be a full http(s) URL."
+        ),
+    )
 
 
 class RelatedWork(BaseModel):

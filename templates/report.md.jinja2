@@ -15,11 +15,15 @@
 |-------|-------|
 | **Paper** | [arXiv:{{ paper.id }}]({{ paper.arxiv_url }}) |
 | **HuggingFace** | [Link]({{ paper.hf_url }}) |
+{% if paper.github_repo %}| **Code** | [GitHub]({{ paper.github_repo }}) |
+{% endif %}
+{% if blog_url %}| **Blog** | [Web]({{ blog_url }}) |
+{% endif %}
 | **Published** | {{ paper.published_at.strftime('%Y-%m-%d') if paper.published_at else 'Unknown' }} |
 | **Authors** | {{ paper.authors | join(', ') }} |
 | **Affiliations** | {{ affiliations | join(', ') or 'N/A' }} |
 | **Keywords** | {{ keywords | join(', ') or 'N/A' }} |
-{% if paper_type and paper_type != 'method' %}| **Paper Type** | {{ paper_type | capitalize }} |
+{% if paper_type %}| **Paper Type** | {% for pt in paper_types %}{% if pt.active %}**{{ pt.label }}** ✅{% else %}{{ pt.label }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %} |
 {% endif %}
 
 ## {{ section_labels.benchmarks_heading | default('Benchmarks') }}

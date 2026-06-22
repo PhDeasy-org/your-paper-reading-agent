@@ -353,7 +353,12 @@ def run(
 
     pipeline = PaperPipeline(cfg)
     try:
-        reports = pipeline.run(date=date, limit=limit, prompt_replace=not force)
+        reports = pipeline.run(
+            date=date,
+            limit=limit,
+            prompt_replace=not force,
+            prompt_publish=not force,
+        )
     except Exception as exc:
         console.print(f"[red]Pipeline failed:[/red] {exc}")
         raise typer.Exit(1)

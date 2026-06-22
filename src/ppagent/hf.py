@@ -67,6 +67,7 @@ def _parse_paper(raw: dict[str, Any]) -> Paper:
         published_at=published_at,
         upvotes=raw.get("upvotes", 0),
         summary=raw.get("summary", raw.get("abstract", "")),
+        github_repo=raw.get("github_repo", "") or "",
     )
 
 

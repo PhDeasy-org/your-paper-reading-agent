@@ -176,6 +176,7 @@ class WriterAgent(AgentWithTools):
                 "previous_works": output.previous_works_summary,
                 "method": output.method_details,
                 "evaluation": output.performance_evaluation,
+                "blog_url": output.blog_url,
                 "paper_type": paper_type,
             },
             usage=self.llm.get_usage(),

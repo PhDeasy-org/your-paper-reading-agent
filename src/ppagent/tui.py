@@ -18,6 +18,7 @@ import typer
 
 from ppagent.config import (
     AppConfig,
+    LLMConfig,
     load_config,
     CONFIG_PATH,
     _LLM_ROLES,
@@ -39,7 +40,7 @@ class MenuItem:
         set_value: Any | None = None,
     ):
         self.label = label
-        self.target = target  # Submenu name or action ('save', 'discard', 'back')
+        self.target = target  # Submenu name or action ('back', etc.)
         self.key = key  # Configuration key path (if config option)
         self.val_type = val_type
         self.secret = secret
@@ -63,13 +64,49 @@ def _snapshot_active_vendor(cfg: AppConfig, role: str) -> str:
     switch to a different provider and later switch back without losing the
     previously entered api_key/model/etc.
     """
-    from ppagent.config import LLMConfig
     import copy
 
     active: LLMConfig = getattr(cfg.llms, role)
     vendor_key = detect_provider(active.base_url)
     cfg.llms.saved_vendors.setdefault(role, {})[vendor_key] = copy.deepcopy(active)
     return vendor_key
+
+
+def _shared_api_key(cfg: AppConfig, vendor_key: str) -> str | None:
+    """Return a non-blank api_key for ``vendor_key`` from any role, if known.
+
+    API keys are per *provider*, not per role — the same OpenAI key works for
+    text/vision/searcher alike. So when the user fills in a key in one place,
+    every other role visiting that provider can reuse it instead of asking for
+    the key again.
+    """
+    for role in _LLM_ROLES:
+        active = getattr(cfg.llms, role)
+        if detect_provider(active.base_url) == vendor_key and active.api_key:
+            return active.api_key
+        snapshot = cfg.llms.saved_vendors.get(role, {}).get(vendor_key)
+        if snapshot is not None and snapshot.api_key:
+            return snapshot.api_key
+    return None
+
+
+def _propagate_api_key(cfg: AppConfig, role: str, vendor_key: str, api_key: str) -> None:
+    """Mirror an api_key change into every role's live config + snapshot.
+
+    When the user edits the api_key for ``(role, vendor_key)``, copy the value
+    into every other role whose live config or saved snapshot uses the same
+    provider. This keeps sibling roles (e.g. text and vision both on OpenAI) in
+    lockstep so a key entered once is immediately available everywhere.
+    """
+    for other_role in _LLM_ROLES:
+        if other_role == role:
+            continue
+        other = getattr(cfg.llms, other_role)
+        if detect_provider(other.base_url) == vendor_key:
+            other.api_key = api_key
+        snapshot = cfg.llms.saved_vendors.get(other_role, {}).get(vendor_key)
+        if snapshot is not None:
+            snapshot.api_key = api_key
 
 
 def _switch_vendor(cfg: AppConfig, role: str, vendor_key: str) -> None:
@@ -80,9 +117,10 @@ def _switch_vendor(cfg: AppConfig, role: str, vendor_key: str) -> None:
       the same provider's settings page must not wipe anything).
     - Otherwise, load that vendor's saved config if one exists; if not, seed a
       fresh LLMConfig with the vendor's ``base_url``/``default_model`` and blank
-      credentials so the user only fills in the fields that matter.
+      credentials so the user only fills in the fields that matter. If some
+      other role already has an api_key for this provider, reuse it instead of
+      asking the user to type the same key again.
     """
-    from ppagent.config import LLMConfig
     import copy
 
     active = getattr(cfg.llms, role)
@@ -105,6 +143,14 @@ def _switch_vendor(cfg: AppConfig, role: str, vendor_key: str) -> None:
             api_key="",
             model=_vendor_default_model(vendor_key) or active.model,
         )
+
+    # API keys are shared per provider: if a sibling role already holds a key
+    # for this vendor, inherit it so the user isn't asked to type it twice.
+    if not new_cfg.api_key:
+        inherited = _shared_api_key(cfg, vendor_key)
+        if inherited:
+            new_cfg.api_key = inherited
+
     setattr(cfg.llms, role, new_cfg)
 
 
@@ -562,12 +608,28 @@ def get_config_value(cfg: AppConfig, key_path: str) -> Any:
 
 
 def set_config_value(cfg: AppConfig, key_path: str, new_val: Any) -> None:
-    """Set nested attribute of AppConfig by path string (e.g. 'llm.api_key')."""
+    """Set nested attribute of AppConfig by path string (e.g. 'llm.api_key').
+
+    For ``llms.<role>.api_key``, the new value is propagated to every sibling
+    role whose active provider matches: API keys are per-provider, not per-role,
+    so entering the key once (e.g. in "vision") makes it appear immediately in
+    "text"/"searcher" when they use the same provider.
+    """
     parts = key_path.split(".")
     val = cfg
     for p in parts[:-1]:
         val = getattr(val, p)
     setattr(val, parts[-1], new_val)
+
+    if (
+        len(parts) == 3
+        and parts[0] == "llms"
+        and parts[1] in _LLM_ROLES
+        and parts[2] == "api_key"
+    ):
+        role = parts[1]
+        vendor_key = detect_provider(getattr(cfg.llms, role).base_url)
+        _propagate_api_key(cfg, role, vendor_key, new_val)
 
 
 def toggle_config_value(cfg: AppConfig, key_path: str) -> None:
@@ -645,7 +707,7 @@ def make_ui(menu_id: str, selected_idx: int, cfg: AppConfig) -> Panel:
     content = Group(
         Panel(body_content, border_style="cyan", title="Navigation Menu"),
         Panel(
-            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: \\[↑/↓] Navigate  \\[Enter] Navigate/Toggle  \\[Space] Select  \\[←] Back  \\[q] Save & Quit  \\[x] Discard & Quit[/dim]",
+            f"[bold yellow]Info:[/bold yellow] {desc}\n[dim]Controls: \\[↑/↓] Navigate  \\[Enter] Navigate/Toggle  \\[Space] Select  \\[←] Back  \\[q] Save & Quit[/dim]",
             border_style="dim blue",
             title="Help & Controls",
         ),
@@ -786,6 +848,7 @@ def run_config_tui() -> None:
             try:
                 key = get_key()
             except KeyboardInterrupt:
+                # Ctrl+C always saves & quits — there is no "discard" path.
                 break
 
             if key == "up" or key == "k":
@@ -798,15 +861,12 @@ def run_config_tui() -> None:
                 if len(menu_stack) > 1:
                     menu_stack.pop()
             elif key == "q":
+                # The only way out — always persist changes.
                 save_config(cfg, config_file)
                 live.stop()
                 console.print(
                     f"[bold green]Configuration saved successfully to {config_file}[/bold green]"
                 )
-                return
-            elif key == "x":
-                live.stop()
-                console.print("[yellow]Changes discarded.[/yellow]")
                 return
             elif key in ("enter", "space"):
                 item = menu_def[selected_idx]
@@ -874,5 +934,8 @@ def run_config_tui() -> None:
                         set_config_value(cfg, item.key, new_val)
                         live.start()
 
-    # If the loop ended via break/escape on main menu/Ctrl+C
-    console.print("[yellow]TUI config session closed. Changes not saved.[/yellow]")
+    # Reached only via Ctrl+C: every exit persists — there is no discard path.
+    save_config(cfg, config_file)
+    console.print(
+        f"[bold green]Configuration saved successfully to {config_file}[/bold green]"
+    )

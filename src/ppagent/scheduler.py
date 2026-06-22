@@ -45,7 +45,9 @@ class PaperScheduler:
         """Execute the full pipeline and log results."""
         logger.info("Scheduled pipeline run started")
         try:
-            reports = self.pipeline.run(prompt_replace=False)
+            reports = self.pipeline.run(
+                prompt_replace=False, prompt_publish=False
+            )
             logger.info("Scheduled run complete: %d report(s) generated", len(reports))
             for r in reports:
                 logger.info("  - %s (%s)", r.paper.title, r.paper.id)

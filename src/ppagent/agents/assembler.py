@@ -462,7 +462,11 @@ class Assembler:
         selected_figures: list[SelectedFigure] | None = None,
         section_labels: dict[str, str] | None = None,
     ) -> dict:
-        from ppagent.agents.prompts import WRITER_SECTION_LABELS, DEFAULT_PAPER_TYPE
+        from ppagent.agents.prompts import (
+            PAPER_TYPES,
+            WRITER_SECTION_LABELS,
+            DEFAULT_PAPER_TYPE,
+        )
 
         if section_labels is None:
             section_labels = WRITER_SECTION_LABELS[DEFAULT_PAPER_TYPE]
@@ -476,9 +480,22 @@ class Assembler:
             )
             bucket.append(sf.figure)
 
+        # All known paper types, with the report's classified type flagged so
+        # templates can render the full taxonomy and highlight the active one.
+        paper_types = [
+            {
+                "key": key,
+                "label": key.capitalize(),
+                "description": desc,
+                "active": key == report.paper_type,
+            }
+            for key, desc in PAPER_TYPES.items()
+        ]
+
         return {
             "paper": report.paper,
             "paper_type": report.paper_type,
+            "paper_types": paper_types,
             "section_labels": section_labels,
             "metadata": report.metadata,
             "benchmarks": report.benchmarks,
@@ -492,6 +509,7 @@ class Assembler:
             "model_used": report.model_used,
             "keywords": writer_data.get("keywords", []),
             "affiliations": writer_data.get("affiliations", []),
+            "blog_url": writer_data.get("blog_url", ""),
             "finder_narrative": finder_data.get("narrative", ""),
             "selected_figures": selected_figures or [],
             "figures_by_section": figures_by_section,

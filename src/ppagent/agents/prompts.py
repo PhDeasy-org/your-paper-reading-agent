@@ -141,6 +141,7 @@ _WRITER_COMMON_PREFIX += r"""
 For each section:
 - **Keywords**: Extract 5-8 key technical terms/concepts from the paper.
 - **Affiliations**: List the institutional affiliations of the authors.
+- **Blog URL**: If the paper text links to an official blog post or explanatory webpage about this paper (e.g. on the authors' company/project blog), extract its full URL. Leave empty if none is mentioned.
 """
 
 _WRITER_PREVIOUS_WORKS = r"""- **Previous Works Summary**: Summarize the related work section — what prior methods exist and what are their limitations that motivate this work. As required by the hyperlink policy, EVERY prior work, method, framework, baseline, or dataset mentioned here MUST be hyperlinked to its source."""

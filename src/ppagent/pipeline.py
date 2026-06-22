@@ -146,7 +146,7 @@ class PaperPipeline:
             self.console.print(f"  [red]✗[/red] {label} agent failed: {result.error}")
         return result
 
-    def report(self, paper_id: str) -> PaperReport:
+    def report(self, paper_id: str, *, prompt_publish: bool = True) -> PaperReport:
         """Generate a comprehensive report for a single paper.
 
         This method orchestrates a multi-agent workflow:
@@ -160,6 +160,10 @@ class PaperPipeline:
 
         Args:
             paper_id: The arXiv ID or HuggingFace paper ID to process.
+            prompt_publish: When True (interactive runs), ask for a y/N
+                confirmation before publishing to each enabled destination.
+                Scheduled/headless callers pass False to publish without
+                prompting.
 
         Returns:
             A populated PaperReport object containing the generated sections.
@@ -178,6 +182,12 @@ class PaperPipeline:
         )
         self.console.print(
             f"    [dim]Base URL: {self.config.llms.vision.base_url} | Temperature: {self.config.llms.vision.temperature} | Max tokens: {self.config.llms.vision.max_tokens} | Thinking: {self.config.llms.vision.enable_thinking}[/dim]"
+        )
+        self.console.print(
+            f"  • [bold]Searcher model (Paper Scoring):[/bold] [cyan]{self.config.llms.searcher.model}[/cyan]"
+        )
+        self.console.print(
+            f"    [dim]Base URL: {self.config.llms.searcher.base_url} | Temperature: {self.config.llms.searcher.temperature} | Max tokens: {self.config.llms.searcher.max_tokens} | Thinking: {self.config.llms.searcher.enable_thinking}[/dim]"
         )
 
         # Fetch paper info
@@ -498,10 +508,30 @@ class PaperPipeline:
             md_content=md_content,
             html_content=html_content,
             report_dir=paper_dir,
+            prompt_publish=prompt_publish,
         )
 
         logger.info("Report generated for %s: %s", paper_id, paper.title)
         return report
+
+    def _confirm_publish(self, dest_labels: str) -> bool:
+        """Ask the user to confirm publishing the report to ``dest_labels``.
+
+        Returns True only on an explicit yes. Any other answer, a closed stdin
+        (EOF), or an interrupt (Ctrl+C) returns False so publishing is skipped
+        rather than blocking or crashing the run.
+        """
+        try:
+            answer = (
+                input(
+                    f"Publish this report to {dest_labels}? [y/N] "
+                )
+                .strip()
+                .lower()
+            )
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return answer in ("y", "yes")
 
     def _publish_report(
         self,
@@ -510,6 +540,7 @@ class PaperPipeline:
         md_content: str,
         html_content: str,
         report_dir: Path,
+        prompt_publish: bool = True,
     ) -> None:
         """Run every enabled publisher against the freshly generated report.
 
@@ -517,6 +548,11 @@ class PaperPipeline:
         instantiates the enabled ones from their config sub-models and invokes
         them. A publisher failure is logged but never aborts the pipeline or
         sibling publishers.
+
+        Args:
+            prompt_publish: When True, ask for a y/N confirmation before
+                publishing. Headless callers (the scheduler) pass False to
+                publish without prompting.
         """
         if not self.config.publish.enabled:
             return
@@ -533,6 +569,16 @@ class PaperPipeline:
         if not enabled:
             logger.debug("Publishing enabled but no individual publisher enabled.")
             return
+
+        # Interactive runs confirm before pushing the report anywhere; a no
+        # (or EOF/Ctrl-C) skips publishing entirely. Scheduled runs bypass this.
+        if prompt_publish:
+            dest_labels = ", ".join(
+                name.replace("_", " ").title() for name, _ in enabled
+            )
+            if not self._confirm_publish(dest_labels):
+                self.console.print("[yellow]Publishing skipped.[/yellow]")
+                return
 
         self.console.print("\n[bold cyan]📣 Publishing report...[/bold cyan]")
         for name, cfg in enabled:
@@ -565,6 +611,7 @@ class PaperPipeline:
         date: str | None = None,
         limit: int | None = None,
         prompt_replace: bool = True,
+        prompt_publish: bool = True,
     ) -> list[PaperReport]:
         """Execute the full pipeline: discover relevant papers and generate reports for them.
 
@@ -575,6 +622,8 @@ class PaperPipeline:
             date: The date to fetch papers for.
             limit: The maximum number of papers to evaluate.
             prompt_replace: If True, prompt the user via CLI before regenerating an existing report.
+            prompt_publish: If True, prompt the user via CLI before publishing each
+                report. Headless callers pass False to publish without prompting.
 
         Returns:
             A list of PaperReport objects that were successfully generated.
@@ -606,7 +655,7 @@ class PaperPipeline:
                     continue
 
             try:
-                report = self.report(paper.id)
+                report = self.report(paper.id, prompt_publish=prompt_publish)
                 reports.append(report)
             except Exception as exc:
                 logger.error("Failed to generate report for %s: %s", paper.id, exc)
