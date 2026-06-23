@@ -132,6 +132,46 @@ class TestFriendlyError:
 
 
 # ---------------------------------------------------------------------------
+# _clamp_max_tokens — thinking-aware floor and ceiling
+# ---------------------------------------------------------------------------
+
+
+class TestClampMaxTokens:
+    def test_bumps_floor_for_thinking_models(self) -> None:
+        """A thinking model with a low max_tokens is raised to the thinking
+        floor so reasoning doesn't truncate the structured output."""
+        client = _make_client(max_tokens=4096, enable_thinking=True)
+        assert client._clamp_max_tokens(None) == LLMClient._THINKING_MAX_TOKENS_FLOOR
+
+    def test_respects_higher_user_value_when_thinking(self) -> None:
+        """The floor only raises low values; a user-set value above the floor
+        is passed through unchanged."""
+        client = _make_client(max_tokens=20000, enable_thinking=True)
+        assert client._clamp_max_tokens(None) == 20000
+
+    def test_unchanged_without_thinking(self) -> None:
+        """Non-thinking models use the configured value verbatim — no floor."""
+        client = _make_client(max_tokens=4096, enable_thinking=False)
+        assert client._clamp_max_tokens(None) == 4096
+
+    def test_explicit_argument_overrides_config(self) -> None:
+        """An explicit max_tokens argument wins over config (and the floor)."""
+        client = _make_client(max_tokens=4096, enable_thinking=True)
+        assert client._clamp_max_tokens(24000) == 24000
+
+    def test_ceiling_still_enforced(self) -> None:
+        """Values above the ceiling are clamped down, even for thinking models."""
+        client = _make_client(max_tokens=99999, enable_thinking=True)
+        assert client._clamp_max_tokens(None) == LLMClient._MAX_TOKENS_CEILING
+
+    def test_zero_or_none_falls_back_to_config(self) -> None:
+        """``None``/0 max_tokens falls back to the configured value (then floored)."""
+        client = _make_client(max_tokens=2048, enable_thinking=True)
+        assert client._clamp_max_tokens(None) == LLMClient._THINKING_MAX_TOKENS_FLOOR
+        assert client._clamp_max_tokens(0) == LLMClient._THINKING_MAX_TOKENS_FLOOR
+
+
+# ---------------------------------------------------------------------------
 # _call_with_retry — retry vs. no-retry behaviour
 # ---------------------------------------------------------------------------
 

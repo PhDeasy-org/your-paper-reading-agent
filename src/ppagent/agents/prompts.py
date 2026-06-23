@@ -144,95 +144,312 @@ For each section:
 - **Blog URL**: If the paper text links to an official blog post or explanatory webpage about this paper (e.g. on the authors' company/project blog), extract its full URL. Leave empty if none is mentioned.
 """
 
-_WRITER_PREVIOUS_WORKS = r"""- **Previous Works Summary**: Summarize the related work section — what prior methods exist and what are their limitations that motivate this work. As required by the hyperlink policy, EVERY prior work, method, framework, baseline, or dataset mentioned here MUST be hyperlinked to its source."""
+_WRITER_FORMAT_DIRECTIVE = r"""
+OUTPUT FORMAT — applies to ALL sections except Keywords, Affiliations, Blog URL, and TL;DR:
+- Structure EVERY section with clear Markdown subsections (use `###` headings within each field).
+- Use bullet lists for enumerations and numbered lists for sequential steps or procedures.
+- Use Markdown tables when comparing methods, datasets, or results side-by-side.
+- Keep paragraphs SHORT (2-3 sentences max). Prefer lists and subsections over dense prose.
+- Each section should be scannable: a reader skimming only the subsection headings and bold text should grasp the gist.
+"""
+
+_WRITER_COMMON_PREFIX += _WRITER_FORMAT_DIRECTIVE
+
+_WRITER_PREVIOUS_WORKS = r"""- **Previous Works Summary**: Structure with clear subsections:
+
+  ### Key Prior Approaches
+  For each major prior method or baseline, use a structured entry:
+  - **[Method Name](URL)**: 1-2 sentence description of what it does. Use a step-by-step walkthrough if the method is central to understanding this paper's contribution.
+
+  ### Limitations & Gaps
+  What specific limitations of these prior approaches does this paper address? Use a bullet list mapping each limitation to the prior work(s) it applies to. As required by the hyperlink policy, EVERY prior work, method, framework, baseline, or dataset mentioned here MUST be hyperlinked to its source."""
 
 WRITER_SYSTEM_PROMPTS: dict[str, str] = {
     "method": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: List all benchmarks, datasets, and evaluation metrics used. If none, write "None reported."
+        + r"""- **Benchmarks**: Structure with clear subsections:
+
+  ### Datasets
+  For each dataset/benchmark, provide:
+  - **Name** ([link]): domain, scale, and what it measures.
+
+  ### Evaluation Metrics
+  List metrics used and briefly explain any non-standard ones.
+
+  ### Experimental Setup
+  Key details: model sizes tested, training compute, hardware, key hyperparameters. Use a table if comparing multiple configurations.
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Method Details**: Describe the proposed method in detail, including architecture, training procedure, key equations, and novel components. Be technical and thorough.
-- **Performance Evaluation**: Summarize the experimental results — main results, comparisons with baselines, ablation studies, and key findings. Include specific numbers where available.\
+- **Method Details**: Structure this section with the following subsections:
+
+  ### What It Does
+  Describe the method's mechanics step by step. Use a minimal concrete example or walkthrough to illustrate the pipeline/algorithm: show inputs → transformations → outputs. Include key equations, architecture details, and pseudocode-style steps where appropriate.
+
+  ### How Previous Methods Work
+  Briefly illustrate what the closest prior method(s) do, using the same step-by-step format, so the reader can directly contrast the two approaches. Skip this subsection only if no prior method is comparable.
+
+  ### Why — Motivation & Design Rationale
+  Explain WHY each key design choice was made. What problem does each component solve? What failure mode of prior work does it address? Connect each design decision back to a specific limitation or gap.
+- **Performance Evaluation**: Structure with clear subsections:
+
+  ### Main Results
+  Summarize the headline results. Use a Markdown table for the primary comparison (method vs. baselines across key benchmarks). Include specific numbers.
+
+  ### Ablation Studies
+  What do the ablations reveal about which components matter most? Use bullet points, one per ablation finding.
+
+  ### Key Takeaways
+  2-3 bullet points summarizing the most important empirical conclusions.\
 """
     ),
     "benchmark": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: Describe the benchmark itself — its name, domain, scale, data sources, annotation process, and evaluation protocol. If the paper also evaluates on external benchmarks, list those too.
+        + r"""- **Benchmarks**: Structure with clear subsections:
+
+  ### The Benchmark Itself
+  Name, domain, scale, data sources, and annotation process of the proposed benchmark.
+
+  ### External Benchmarks
+  Any external benchmarks also used for comparison or validation.
+
+  ### Evaluation Protocol
+  How models are evaluated: metrics, splits, submission format.
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Benchmark Design & Scope**: Describe the benchmark's design in detail: task taxonomy, data collection methodology, annotation guidelines, quality control, scale (number of samples/tasks/languages), intended evaluation scenarios, and how it differs from prior benchmarks. Include any novel evaluation metrics or protocols introduced.
-- **Baseline Results & Analysis**: Summarize the baseline experiments conducted on the benchmark: which models were evaluated, key results and rankings, notable failure modes revealed, and what the results tell us about the current state of the field. Include specific numbers.\
+- **Benchmark Design & Scope**: Structure with clear subsections:
+
+  ### What It Measures
+  Describe the benchmark's task taxonomy step by step: what inputs are given, what outputs are expected, and how correctness is judged. Use a concrete example task to illustrate.
+
+  ### How Previous Benchmarks Work
+  Briefly describe 1-2 closest prior benchmarks using the same format, so the reader can see what's different. Skip only if no prior benchmark is comparable.
+
+  ### Design & Construction
+  Data collection methodology, annotation guidelines, quality control, scale (number of samples/tasks/languages), and novel evaluation metrics or protocols introduced.
+
+  ### Why — Motivation & Gap
+  What specific shortcomings of prior benchmarks does this one address? Map each design choice to a gap it fills.
+- **Baseline Results & Analysis**: Structure with clear subsections:
+
+  ### Main Results
+  Which models were evaluated? Use a Markdown table showing key results and rankings. Include specific numbers.
+
+  ### Analysis & Insights
+  Notable failure modes revealed, surprising findings, and what the results tell us about the current state of the field.
+
+  ### Key Takeaways
+  2-3 bullet points summarizing the most important conclusions from the baseline evaluation.\
 """
     ),
     "survey": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: List the key benchmarks, datasets, or evaluation protocols discussed across the surveyed literature. If the survey proposes its own taxonomy or categorization, describe it briefly.
+        + r"""- **Benchmarks**: List the key benchmarks, datasets, or evaluation protocols discussed across the surveyed literature. Use a structured list with one entry per benchmark/dataset. If the survey proposes its own taxonomy or categorization, describe it briefly.
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Taxonomy & Organization**: Describe the paper's taxonomy or organizational framework for categorizing the surveyed work. What are the main dimensions, categories, or axes used? How does the survey structure the evolution of the field? Include key methods/approaches covered in each category.
-- **Key Findings & Open Challenges**: Summarize the survey's key findings: What are the main trends? What approaches work best and under what conditions? What are the identified open challenges, limitations of current approaches, and promising future research directions?\
+- **Taxonomy & Organization**: Structure with clear subsections:
+
+  ### Organizational Framework
+  What are the main dimensions, categories, or axes the survey uses to organize the field? Illustrate with a brief outline or table showing the taxonomy structure.
+
+  ### Category Breakdown
+  For each major category, list the key methods/approaches covered with brief descriptions. Use bullet points with **bold method names** and 1-sentence descriptions.
+
+  ### Why This Taxonomy
+  What makes this organizational scheme useful? How does it differ from or improve upon previous surveys' categorizations?
+- **Key Findings & Open Challenges**: Structure with clear subsections:
+
+  ### Key Findings
+  What are the main trends? What approaches work best and under what conditions? Use bullet points.
+
+  ### Open Challenges
+  What are the identified limitations of current approaches? Use bullet points.
+
+  ### Future Directions
+  What promising research directions does the survey highlight?\
 """
     ),
     "analysis": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: List any benchmarks, datasets, or experimental setups used in the analysis. If the paper is primarily theoretical, write "Primarily theoretical analysis."
+        + r"""- **Benchmarks**: Structure as a list of any benchmarks, datasets, or experimental setups used. If the paper is primarily theoretical, write "Primarily theoretical analysis." For each entry: name, domain, and role in the analysis.
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Core Analysis & Insights**: Describe the core analysis conducted. What concept, method, or phenomenon is being analyzed? What approach does the paper take (theoretical analysis, controlled experiments, visualization, etc.)? What are the key insights, explanations, or demystifications? Include key equations or theoretical results.
-- **Evidence & Validation**: Summarize the evidence supporting the analysis: experimental validation, ablation studies, case studies, or theoretical proofs. What hypotheses were tested? What surprising or counter-intuitive findings emerged? Include specific results where available.\
+- **Core Analysis & Insights**: Structure with clear subsections:
+
+  ### What Is Analyzed
+  What concept, method, or phenomenon is being studied? Describe it concretely with a step-by-step example if applicable.
+
+  ### Analytical Approach
+  What methodology does the paper use (theoretical analysis, controlled experiments, visualization, etc.)? Walk through the analysis pipeline step by step.
+
+  ### How Previous Analyses Approached This
+  Briefly describe how prior work analyzed the same or similar phenomena, so the reader can contrast approaches. Skip only if no prior analysis is comparable.
+
+  ### Why — Motivation
+  Why is this analysis needed? What misconceptions or gaps in understanding does it address?
+
+  ### Key Insights
+  Bullet list of the main findings, explanations, or demystifications. Include key equations or theoretical results.
+- **Evidence & Validation**: Structure with clear subsections:
+
+  ### Experimental Evidence
+  What experiments validate the analysis? Use tables or bullet points with specific results.
+
+  ### Surprising Findings
+  What counter-intuitive or unexpected results emerged?
+
+  ### Key Takeaways
+  2-3 bullet points summarizing the most important conclusions.\
 """
     ),
     "empirical": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: List all benchmarks, datasets, and evaluation metrics used in the empirical study. Describe the experimental setup and conditions compared.
+        + r"""- **Benchmarks**: Structure with clear subsections:
+
+  ### Datasets & Benchmarks
+  For each dataset: name, domain, scale, and what it measures.
+
+  ### Evaluation Metrics
+  List metrics and explain non-standard ones.
+
+  ### Experimental Conditions
+  What are the controlled variables and compared conditions?
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Experimental Design**: Describe the experimental design: What hypotheses or research questions are investigated? What methods/approaches are compared? What are the controlled variables? Describe the experimental protocol, data splits, hyperparameter ranges, and computational setup.
-- **Key Findings & Comparisons**: Summarize the main empirical findings: How do the compared approaches perform relative to each other? What factors most influence performance? Are there scaling laws or trends? What practical recommendations emerge from the study? Include specific numbers and statistical significance where reported.\
+- **Experimental Design**: Structure with clear subsections:
+
+  ### Research Questions
+  What hypotheses or research questions are investigated? Use a numbered list.
+
+  ### Compared Approaches
+  What methods are compared? For each, briefly describe what it does (1-2 sentences). Use bullet points.
+
+  ### Experimental Protocol
+  Describe the experimental procedure step by step: data splits, hyperparameter ranges, computational setup, and any controls.
+
+  ### Why These Comparisons
+  What makes this set of comparisons informative? What gap in prior empirical work does this study fill?
+- **Key Findings & Comparisons**: Structure with clear subsections:
+
+  ### Main Results
+  Use a Markdown table comparing approaches across benchmarks. Include specific numbers and statistical significance where reported.
+
+  ### Key Findings
+  What factors most influence performance? Are there scaling laws or trends? Use bullet points.
+
+  ### Practical Recommendations
+  What actionable recommendations emerge from the study?\
 """
     ),
     "framework": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: List any benchmarks or performance metrics used to evaluate the framework/system (e.g., throughput, latency, memory usage, scalability tests).
+        + r"""- **Benchmarks**: Structure as a list of performance metrics used to evaluate the framework (e.g., throughput, latency, memory, scalability). For each: metric name, what it measures, and conditions.
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Architecture & Design**: Describe the system's architecture and design: core components, key design decisions, APIs, abstractions, and how they fit together. What engineering innovations or optimizations are introduced? How does it differ architecturally from existing systems?
-- **Performance & Capabilities**: Summarize the system's evaluation: throughput, latency, scalability, resource efficiency, and comparison with existing systems/frameworks. Include specific benchmark numbers. Describe supported features, use cases, and any limitations acknowledged.\
+- **Architecture & Design**: Structure with clear subsections:
+
+  ### System Overview
+  Describe the system's architecture at a high level: what are the core components and how do they interact? Use a step-by-step walkthrough of a typical request/workflow through the system.
+
+  ### Key Components
+  For each major component, describe its responsibility and interface. Use bullet points with **bold component names**.
+
+  ### How Previous Systems Work
+  Briefly describe the architecture of 1-2 closest prior systems for contrast. Skip only if no prior system is comparable.
+
+  ### Why — Design Rationale
+  What engineering innovations or optimizations are introduced? Connect each design decision to a specific bottleneck or limitation it addresses.
+- **Performance & Capabilities**: Structure with clear subsections:
+
+  ### Performance Results
+  Use a Markdown table comparing throughput, latency, scalability, and resource efficiency with existing systems. Include specific numbers.
+
+  ### Feature Comparison
+  What capabilities does this system support that alternatives don't? Use a comparison table if appropriate.
+
+  ### Key Takeaways
+  2-3 bullet points on the system's main advantages and acknowledged limitations.\
 """
     ),
     "position": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: List any benchmarks, experiments, or case studies used to support the paper's arguments. If purely argumentative, write "Argumentative paper — no benchmarks."
+        + r"""- **Benchmarks**: List any benchmarks, experiments, or case studies used to support the paper's arguments. If purely argumentative, write "Argumentative paper — no benchmarks." Use structured entries if any exist.
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Core Argument**: Describe the paper's central thesis or argument: What position does it advocate? What is it arguing for or against? What assumptions does it challenge? What evidence, reasoning, or examples does it use to support its claims? Present the argument structure clearly.
-- **Supporting Evidence & Counterarguments**: Summarize the evidence presented: case studies, experiments, historical examples, or logical arguments. Does the paper address counterarguments? What are the acknowledged limitations of the position? What concrete recommendations or calls to action does it make?\
+- **Core Argument**: Structure with clear subsections:
+
+  ### Central Thesis
+  State the paper's main position clearly in 1-2 sentences.
+
+  ### Argument Structure
+  Walk through the argument step by step: what claims are made, and how each builds on the previous? Use a numbered list.
+
+  ### What It Argues Against
+  Briefly describe the prevailing view or assumption that this paper challenges, so the reader can contrast the positions.
+
+  ### Why This Matters
+  What are the stakes? Why should the community pay attention to this argument?
+- **Supporting Evidence & Counterarguments**: Structure with clear subsections:
+
+  ### Evidence Presented
+  What evidence supports the argument? Case studies, experiments, historical examples, or logical reasoning. Use bullet points.
+
+  ### Counterarguments Addressed
+  Does the paper address opposing views? How? Use bullet points.
+
+  ### Recommendations
+  What concrete recommendations or calls to action does the paper make?\
 """
     ),
     "application": (
         _WRITER_COMMON_PREFIX
-        + r"""- **Benchmarks**: List all domain-specific benchmarks, datasets, and evaluation metrics used. Describe any new domain-specific evaluation protocols introduced.
+        + r"""- **Benchmarks**: Structure with clear subsections:
+
+  ### Domain-Specific Datasets
+  For each dataset: name, domain, scale, and what it measures.
+
+  ### Evaluation Metrics
+  List domain-specific metrics and explain any novel evaluation protocols introduced.
 - **TL;DR**: Write a concise 2-3 sentence summary of the paper's core contribution.
 """
         + _WRITER_PREVIOUS_WORKS
         + r"""
-- **Problem & Solution Approach**: Describe the target domain/problem and why it is challenging. What methods are applied or adapted? What domain-specific modifications or adaptations were necessary? How does the solution integrate with existing domain workflows or systems?
-- **Results & Impact**: Summarize the results in the target domain: quantitative metrics, qualitative improvements, user studies, or deployment outcomes. How does the solution compare to domain-specific baselines or existing practices? What is the practical impact or potential for adoption?\
+- **Problem & Solution Approach**: Structure with clear subsections:
+
+  ### Domain Problem
+  Describe the target domain/problem and why it is challenging. Use a concrete example to illustrate the difficulty.
+
+  ### Solution Walkthrough
+  Walk through the solution step by step: what methods are applied, what domain-specific modifications were made, and how the solution integrates with existing workflows. Show inputs → processing → outputs.
+
+  ### How Previous Solutions Work
+  Briefly describe how prior approaches address this domain problem, using the same walkthrough format for contrast. Skip only if no prior solution is comparable.
+
+  ### Why This Approach
+  What makes this approach better suited to the domain than generic methods? Connect design choices to domain-specific requirements.
+- **Results & Impact**: Structure with clear subsections:
+
+  ### Main Results
+  Use a Markdown table comparing with domain-specific baselines. Include specific numbers.
+
+  ### Practical Impact
+  What is the real-world impact? Deployment outcomes, user studies, or qualitative improvements.
+
+  ### Key Takeaways
+  2-3 bullet points summarizing the most important conclusions.\
 """
     ),
 }

@@ -258,14 +258,32 @@ class LLMClient:
             return {}
         return {"extra_body": extra_body}
 
+    # Thinking models spend reasoning tokens from the same max_tokens /
+    # max_output_tokens budget. A low value lets the model exhaust the budget
+    # on reasoning before the structured JSON output completes, causing
+    # finish_reason='length' truncation that retries cannot recover from.
+    # This floor is applied only when thinking is enabled, so non-thinking
+    # models keep using the user-configured value verbatim.
+    _THINKING_MAX_TOKENS_FLOOR = 16384
+    _MAX_TOKENS_CEILING = 16384 * 2
+
     def _clamp_max_tokens(self, max_tokens: int | None) -> int:
         val = max_tokens or self.config.max_tokens
-        if val > 16384 * 2:
-            logger.warning(
-                "max_tokens %d is abnormally high for output completion; clamping to 16384 * 2",
+        if self.config.enable_thinking and val < self._THINKING_MAX_TOKENS_FLOOR:
+            logger.info(
+                "max_tokens %d is too low for a thinking model; raising to %d "
+                "so reasoning doesn't truncate the structured output",
                 val,
+                self._THINKING_MAX_TOKENS_FLOOR,
             )
-            return 16384 * 2
+            val = self._THINKING_MAX_TOKENS_FLOOR
+        if val > self._MAX_TOKENS_CEILING:
+            logger.warning(
+                "max_tokens %d is abnormally high for output completion; clamping to %d",
+                val,
+                self._MAX_TOKENS_CEILING,
+            )
+            return self._MAX_TOKENS_CEILING
         return val
 
     def chat(

@@ -232,8 +232,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         # dated 2026.05.29).
         latest_models=(
             "doubao-seed-evolving",
-            "doubao-seed-2-1-pro-260620",
-            "doubao-seed-2-1-turbo-260620",
+            "doubao-seed-2-1-pro-260628",
+            "doubao-seed-2-1-turbo-260628",
             "doubao-seed-2-0-lite-260215",
         ),
     ),

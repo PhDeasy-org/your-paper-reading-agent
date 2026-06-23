@@ -36,7 +36,10 @@ class LLMConfig(BaseModel):
     api_key: str = ""
     model: str = "gpt-4o"
     temperature: float = 0.3
-    max_tokens: int = 4096
+    # Reports are large structured JSON outputs (method/evaluation/related
+    # work sections). 8192 gives headroom for the full output without
+    # truncation; thinking models are further floored by LLMClient.
+    max_tokens: int = 8192
     timeout: int = 120  # seconds
     instructor_mode: str = "auto"
     enable_thinking: bool = False
