@@ -163,7 +163,6 @@ def _llm_submenu_items(role: str, vendor_key: str) -> list[MenuItem]:
     Otherwise, it is hidden from the settings page, and is set automatically.
     """
     prefix = f"llms.{role}"
-    spec = get_provider(vendor_key)
     items = [
         MenuItem("<- Back to Providers", target="back"),
     ]
@@ -188,24 +187,12 @@ def _llm_submenu_items(role: str, vendor_key: str) -> list[MenuItem]:
     )
     items.append(
         MenuItem(
-            "Model Name",
+            "Models",
             key=f"{prefix}.model",
-            val_type=str,
-            description="Target model (e.g. gpt-4o, deepseek-chat).",
+            target=f"llm_{role}_{vendor_key}_models",
+            description="Select or customize the model to use.",
         )
     )
-
-    # Providers with stable "-latest" aliases (Grok, Gemini) get a picker so
-    # the user can select one instead of typing the model name by hand.
-    if spec is not None and spec.latest_models:
-        items.append(
-            MenuItem(
-                "Latest Models",
-                target=f"llm_{role}_{vendor_key}_latest",
-                description="Pick a '-latest' model alias that auto-routes to "
-                "the newest version of each model family.",
-            )
-        )
 
     items.extend(
         [
@@ -535,12 +522,12 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
             )
         return items
 
-    # Check if "-latest" model picker menu.
-    # e.g., "llm_text_grok_latest", "llm_searcher_gemini_latest"
+    # Check if model picker menu.
+    # e.g., "llm_text_grok_models", "llm_searcher_gemini_models"
     # Must be matched BEFORE the generic vendor-setting regex below, otherwise
-    # its "_latest" suffix gets swallowed by the vendor_key capture group
-    # (e.g. "grok_latest").
-    picker_match = re.match(r"^llm_(text|searcher)_([a-z0-9_]+)_latest$", menu_id)
+    # its "_models" suffix gets swallowed by the vendor_key capture group
+    # (e.g. "grok_models").
+    picker_match = re.match(r"^llm_(text|searcher)_([a-z0-9_]+)_models$", menu_id)
     if picker_match:
         role, vendor_key = picker_match.groups()
         spec = get_provider(vendor_key)
@@ -648,7 +635,9 @@ def format_menu_item(item: MenuItem, current_val: Any, is_selected: bool) -> str
         # Action / navigation items that also carry a key (e.g. the "Custom
         # Model (type your own)" picker entry) render label-only: showing the
         # underlying value would wrongly imply this item *is* that value.
-        if item.set_value is not None or item.target is not None:
+        if item.set_value is not None or (
+            item.target is not None and item.target.endswith("_custom_model")
+        ):
             return f"{marker}{label_part}"
 
         if item.val_type is bool:
@@ -866,14 +855,14 @@ def run_config_tui() -> None:
                     if item.target == "back":
                         if len(menu_stack) > 1:
                             menu_stack.pop()
-                    # The "-latest" model picker is a submenu of an *already
+                    # The model picker is a submenu of an *already
                     # active* vendor — navigate in without calling
                     # _switch_vendor, which would corrupt state by treating
-                    # the "_latest" suffix as a vendor key. Must be checked
+                    # the "_models" suffix as a vendor key. Must be checked
                     # before the vendor-switch regex below, which would
-                    # otherwise match (e.g. "grok_latest").
+                    # otherwise match (e.g. "grok_models").
                     elif re.match(
-                        r"^llm_(text|searcher)_[a-z0-9_]+_latest$",
+                        r"^llm_(text|searcher)_[a-z0-9_]+_models$",
                         item.target,
                     ):
                         menu_stack.append((item.target, 0))
