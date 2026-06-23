@@ -46,20 +46,22 @@ class LLMConfig(BaseModel):
 
 
 # Maps each agent name to the LLM role it should use.
-# writer/finder/criticizer share the "text" role; figure_selector needs vision;
-# searcher is isolated so paper scoring can use a cheaper/faster model.
+# writer/finder/criticizer share the "text" role; searcher is isolated so paper
+# scoring can use a cheaper/faster model. (The figure_selector agent and its
+# "vision" role were removed when figure selection moved to arXiv HTML.)
 AGENT_LLM_ROLE: dict[str, str] = {
     "classifier": "text",
     "writer": "text",
     "finder": "searcher",
     "criticizer": "text",
-    "figure_selector": "vision",
     "searcher": "searcher",
 }
 
 
 def _vision_default() -> LLMConfig:
-    """Default LLM config for the vision role (a vision-capable model)."""
+    """Default LLM config for the vision role (kept for backward-compat with
+    config files that still carry a [llms.vision] section; the field itself
+    was removed when figure selection moved to arXiv HTML)."""
     return LLMConfig(model="gpt-4o")
 
 
@@ -67,25 +69,29 @@ class LLMsConfig(BaseModel):
     """Per-role LLM configurations.
 
     - ``text``: agents that reason over paper text (writer, finder, criticizer).
-    - ``vision``: the figure_selector agent, which sends images to the LLM.
     - ``searcher``: the paper-scoring/relevance agent (discovery phase).
 
     ``saved_vendors`` stores the last-edited LLMConfig for each
     ``(role, vendor_key)`` pair so the user can switch providers in the TUI
     without losing previously entered keys/models. The live role field
-    (``text`` / ``vision`` / ``searcher``) is the *currently active* provider;
+    (``text`` / ``searcher``) is the *currently active* provider;
     the pipeline only ever reads from the live field, so it requires no
     changes. ``saved_vendors`` is keyed as ``{role: {vendor_key: <LLMConfig>}}``.
     """
 
     text: LLMConfig = Field(default_factory=LLMConfig)
-    vision: LLMConfig = Field(default_factory=_vision_default)
     searcher: LLMConfig = Field(default_factory=LLMConfig)
     saved_vendors: dict[str, dict[str, LLMConfig]] = Field(default_factory=dict)
 
+    # Legacy [llms.vision] section is tolerated (older config files still carry
+    # it) but ignored — the vision role was removed when figure selection moved
+    # to arXiv HTML. Pydantic is configured below to allow extra keys so this
+    # doesn't raise on load.
+    model_config = {"extra": "ignore"}
+
     def for_role(self, role: str) -> LLMConfig:
         """Return the LLMConfig for a given role name."""
-        if role not in ("text", "vision", "searcher"):
+        if role not in ("text", "searcher"):
             raise ValueError(f"Unknown LLM role: {role!r}")
         return getattr(self, role)
 
@@ -133,7 +139,11 @@ class ReportConfig(BaseModel):
     )
     download_pdf: bool = Field(
         default=True,
-        description="Whether to download the paper's PDF for figure extraction.",
+        description="Whether to download the paper's PDF as a text-only fallback when arXiv HTML is unavailable.",
+    )
+    max_figures: int = Field(
+        default=8,
+        description="Maximum number of figures to extract from the paper's arXiv HTML and insert into the report.",
     )
     pdf_cache_dir: str = Field(
         default=".cache/pdfs", description="Directory to cache downloaded PDFs."
@@ -263,16 +273,16 @@ class AppConfig(BaseModel):
         return p if p.is_absolute() else self.root / p
 
 
-_LLM_ROLES = ("text", "vision", "searcher")
+_LLM_ROLES = ("text", "searcher")
 
 
 def _migrate_legacy_llm(raw: dict[str, Any]) -> dict[str, Any]:
-    """Migrate a legacy flat ``[llm]`` section to the new ``[llms.*]`` structure.
+    """Migrate a legacy flat ``[llm]`` section to the new ``llms.*`` structure.
 
     If ``raw`` has a flat ``llm`` mapping but no ``llms`` key, the flat config is
-    cloned into ``llms.text``, ``llms.vision``, and ``llms.searcher`` so existing
-    setups keep working unchanged. The legacy ``llm`` key is left in place only
-    until the config is re-saved (callers should write ``llms`` on save).
+    cloned into ``llms.text`` and ``llms.searcher`` so existing setups keep
+    working unchanged. The legacy ``llm`` key is left in place only until the
+    config is re-saved (callers should write ``llms`` on save).
     """
     flat = raw.get("llm")
     if not isinstance(flat, dict) or "llms" in raw:
@@ -291,8 +301,8 @@ def _migrate_legacy_llm(raw: dict[str, Any]) -> dict[str, Any]:
 def _apply_env_overrides(raw: dict[str, Any]) -> dict[str, Any]:
     """Override config values with environment variables.
 
-    ``PPA_LLM_*`` apply to ALL three LLM roles (text/vision/searcher) so a single
-    env var can configure the whole app headlessly.
+    ``PPA_LLM_*`` apply to BOTH LLM roles (text/searcher) so a single env var
+    can configure the whole app headlessly.
     """
     llm_env = {
         "PPA_LLM_API_KEY": "api_key",
