@@ -231,7 +231,9 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         # Source: volcengine.com/docs/82379/1330310 (火山方舟 model list,
         # dated 2026.05.29).
         latest_models=(
-            "doubao-seed-2-0-pro-260215",
+            "doubao-seed-evolving",
+            "doubao-seed-2-1-pro-260620",
+            "doubao-seed-2-1-turbo-260620",
             "doubao-seed-2-0-lite-260215",
         ),
     ),
