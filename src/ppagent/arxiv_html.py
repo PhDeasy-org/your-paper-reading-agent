@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
+from pathlib import Path
 from urllib.parse import urljoin
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -410,3 +413,140 @@ def parse_html(html: str, *, page_url: str) -> tuple[str, list[_RawFigure]]:
     p.feed(article_html)
     p.close()
     return p.markdown(), p.raw_figures()
+
+
+# ---------------------------------------------------------------------------
+# Network fetch + image download
+# ---------------------------------------------------------------------------
+
+_HTML_FETCH_TIMEOUT = 120  # seconds
+_IMAGE_FETCH_TIMEOUT = 60  # seconds
+_USER_AGENT = "ppagent/1.0 (https://github.com/AutoPhd-org/your-paper-reading-agent)"
+_ARXIV_HTML_URL_TEMPLATE = "https://arxiv.org/html/{paper_id}"
+# A fetched page must yield at least this much markdown OR at least one figure
+# to count as a real paper. Truly empty responses (login walls, 200-OK errors,
+# malformed stubs) produce neither and trigger ParseError.
+_MIN_PAPER_MARKDOWN_LEN = 20
+
+
+class HtmlUnavailable(Exception):
+    """Raised when the arXiv HTML page cannot be fetched (404, network, timeout)."""
+
+
+class ParseError(Exception):
+    """Raised when the HTML body is fetched but is not a recognizable paper."""
+
+
+@dataclass
+class ParsedHtml:
+    """Result of :func:`fetch_and_parse`: markdown text + downloaded figures."""
+
+    markdown: str
+    figures: list[Figure]
+    figure_sections: dict[int, str] = field(default_factory=dict)
+
+
+def _ext_from_url(url: str) -> str:
+    """Return a lowercase image extension (without dot) from a URL, default png."""
+    path = url.split("?", 1)[0].split("#", 1)[0]
+    last_segment = path.rsplit("/", 1)[-1]
+    if "." in last_segment:
+        ext = last_segment.rsplit(".", 1)[-1].lower()
+        if ext == "jpeg":
+            ext = "jpg"
+        if ext.isalnum() and len(ext) <= 5:
+            return ext
+    return "png"
+
+
+def fetch_and_parse(
+    paper_id: str,
+    out_dir: Path,
+    *,
+    max_figures: int = 8,
+) -> ParsedHtml:
+    """Fetch an arXiv HTML paper and parse it into markdown + downloaded figures.
+
+    Fetches ``https://arxiv.org/html/{paper_id}`` (arXiv redirects to the
+    latest version, which ``httpx`` follows), parses the body into markdown +
+    figures, and downloads each figure image (up to ``max_figures``) into
+    ``out_dir/figures/``.
+
+    Raises:
+        HtmlUnavailable: HTTP 4xx/5xx or network error on the HTML page.
+        ParseError: page fetched but body is not a recognizable paper.
+    """
+    url = _ARXIV_HTML_URL_TEMPLATE.format(paper_id=paper_id)
+    headers = {"User-Agent": _USER_AGENT}
+
+    # One shared client for the HTML page + all image downloads. Per-request
+    # timeouts (via client.get(..., timeout=)) keep the page and image limits
+    # independent without churning connections.
+    with httpx.Client(
+        timeout=_HTML_FETCH_TIMEOUT, follow_redirects=True, headers=headers
+    ) as client:
+        try:
+            resp = client.get(url)
+            resp.raise_for_status()
+            html = resp.text
+            page_url = str(resp.url)
+        except httpx.HTTPError as exc:
+            raise HtmlUnavailable(
+                f"Could not fetch arXiv HTML for {paper_id!r} at {url}: {exc}"
+            ) from exc
+
+        markdown, raw_figures = parse_html(html, page_url=page_url)
+        # A real paper yields either meaningful prose or at least one figure.
+        # Empty/short markdown with no figures signals a non-paper response
+        # (login wall, malformed stub, withdrawn-paper notice).
+        if len(markdown.strip()) < _MIN_PAPER_MARKDOWN_LEN and not raw_figures:
+            raise ParseError(
+                f"arXiv HTML for {paper_id!r} parsed to empty content ({len(markdown)} chars, "
+                f"{len(raw_figures)} figures); not a recognizable paper."
+            )
+
+        # Download images (up to max_figures). A failed download drops just
+        # that figure rather than failing the whole parse.
+        figures: list[Figure] = []
+        figure_sections: dict[int, str] = {}
+        figures_subdir = out_dir / "figures"
+        figures_subdir.mkdir(parents=True, exist_ok=True)
+
+        for raw in raw_figures:
+            if len(figures) >= max_figures:
+                break
+            ext = _ext_from_url(raw.src_url)
+            rel_path = f"figures/figure_{raw.figure_number}.{ext}"
+            abs_path = figures_subdir / f"figure_{raw.figure_number}.{ext}"
+            try:
+                img_resp = client.get(raw.src_url, timeout=_IMAGE_FETCH_TIMEOUT)
+                img_resp.raise_for_status()
+                abs_path.write_bytes(img_resp.content)
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "Failed to download figure %d from %s: %s — skipping",
+                    raw.figure_number,
+                    raw.src_url,
+                    exc,
+                )
+                continue
+            figures.append(
+                Figure(
+                    figure_number=raw.figure_number,
+                    caption=raw.caption,
+                    image_path=rel_path,
+                )
+            )
+            figure_sections[raw.figure_number] = _map_section(
+                raw.section_title, raw.caption
+            )
+            logger.info(
+                "Downloaded figure %d → %s (%d bytes)",
+                raw.figure_number,
+                rel_path,
+                abs_path.stat().st_size,
+            )
+
+    return ParsedHtml(
+        markdown=markdown, figures=figures, figure_sections=figure_sections
+    )

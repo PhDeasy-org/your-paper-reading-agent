@@ -299,3 +299,217 @@ def test_parse_html_falls_back_to_full_doc_when_no_article():
     )
     md, _figures = parse_html(html, page_url="https://arxiv.org/html/2501.00001v1")
     assert "Content without article wrapper." in md
+
+
+# ---------------------------------------------------------------------------
+# fetch_and_parse — network fetch + image download
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+import httpx  # noqa: E402
+import pytest  # noqa: E402
+
+from ppagent.arxiv_html import (  # noqa: E402
+    HtmlUnavailable,
+    ParseError,
+    ParsedHtml,
+    fetch_and_parse,
+)
+
+
+class _FakeResponse:
+    """Minimal httpx.Response stand-in for fetch_and_parse tests."""
+
+    def __init__(self, status_code: int, text: str = "", content: bytes = b""):
+        self.status_code = status_code
+        self.text = text
+        self.content = content
+        # `fetch_and_parse` reads `resp.url` to resolve relative image URLs.
+        self.url = httpx.URL("https://arxiv.org/html/2501.00001v1")
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError(
+                f"HTTP {self.status_code}", request=None, response=self
+            )
+
+
+def _client_returning(*responses: _FakeResponse):
+    """Build a fake httpx.Client substitute returning the given responses in order.
+
+    Raises if the code under test makes more requests than responses provided,
+    so tests fail loudly on unexpected extra fetches.
+    """
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            self._queue = list(responses)
+            self._calls = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, *args, **kwargs):
+            if self._calls >= len(self._queue):
+                raise AssertionError(
+                    f"unexpected extra HTTP request #{self._calls + 1}: {url}"
+                )
+            r = self._queue[self._calls]
+            self._calls += 1
+            if isinstance(r, Exception):
+                raise r
+            return r
+
+    return _FakeClient
+
+
+def test_fetch_and_parse_downloads_html_and_images(tmp_path):
+    html = (
+        "<html><body><article>"
+        "<h2 class='ltx_title'>3 Method</h2>"
+        "<figure>"
+        "  <img src='2501.00001v1/x1.png'/>"
+        "  <figcaption>Figure 1: pipeline.</figcaption>"
+        "</figure>"
+        "</article></body></html>"
+    )
+    png_bytes = b"\x89PNG\r\n\x1a\n"  # minimal PNG header
+    fake_client = _client_returning(
+        _FakeResponse(200, html),
+        _FakeResponse(200, "", png_bytes),  # image fetch
+    )
+    with patch("ppagent.arxiv_html.httpx.Client", fake_client):
+        result = fetch_and_parse("2501.00001", tmp_path)
+
+    assert isinstance(result, ParsedHtml)
+    assert "## Method" in result.markdown
+    assert len(result.figures) == 1
+    fig = result.figures[0]
+    assert fig.figure_number == 1
+    assert fig.caption == "Figure 1: pipeline."
+    assert fig.image_path == "figures/figure_1.png"
+    # Image downloaded to disk.
+    assert (tmp_path / fig.image_path).read_bytes() == png_bytes
+    # Section mapping applied.
+    assert result.figure_sections[1] == "method"
+
+
+def test_fetch_and_parse_preserves_image_extension(tmp_path):
+    html = (
+        "<html><body><article>"
+        "<h2 class='ltx_title'>2 Method</h2>"
+        "<figure><img src='x1.jpg'/><figcaption>F1</figcaption></figure>"
+        "</article></body></html>"
+    )
+    fake_client = _client_returning(
+        _FakeResponse(200, html),
+        _FakeResponse(200, "", b"\xff\xd8\xff\xe0"),  # JPEG-ish bytes
+    )
+    with patch("ppagent.arxiv_html.httpx.Client", fake_client):
+        result = fetch_and_parse("2501.00001", tmp_path)
+    assert result.figures[0].image_path == "figures/figure_1.jpg"
+    assert (tmp_path / "figures/figure_1.jpg").exists()
+
+
+def test_fetch_and_parse_respects_max_figures(tmp_path):
+    """3 figures in HTML, max_figures=1 → only first downloaded + returned,
+    and only one image fetch is made."""
+    html = (
+        "<html><body><article>"
+        "<h2 class='ltx_title'>2 Method</h2>"
+        + "".join(
+            f"<figure><img src='x{i}.png'/><figcaption>F{i}</figcaption></figure>"
+            for i in (1, 2, 3)
+        )
+        + "</article></body></html>"
+    )
+    fake_client = _client_returning(
+        _FakeResponse(200, html),
+        _FakeResponse(200, "", b"\x89PNG"),  # only ONE image fetch expected
+    )
+    with patch("ppagent.arxiv_html.httpx.Client", fake_client):
+        result = fetch_and_parse("2501.00001", tmp_path, max_figures=1)
+    assert len(result.figures) == 1
+    assert result.figures[0].figure_number == 1
+
+
+def test_fetch_and_parse_skips_failed_image_download(tmp_path):
+    """A 404 on one image drops just that figure; others survive."""
+    html = (
+        "<html><body><article>"
+        "<h2 class='ltx_title'>2 Method</h2>"
+        "<figure><img src='x1.png'/><figcaption>F1</figcaption></figure>"
+        "<figure><img src='x2.png'/><figcaption>F2</figcaption></figure>"
+        "</article></body></html>"
+    )
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            self._n = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, *args, **kwargs):
+            self._n += 1
+            if self._n == 1:
+                return _FakeResponse(200, html)  # HTML page
+            if self._n == 2:
+                # First image 404s.
+                raise httpx.HTTPStatusError(
+                    "404", request=None, response=_FakeResponse(404, "")
+                )
+            return _FakeResponse(200, "", b"\x89PNG")  # second image OK
+
+    with patch("ppagent.arxiv_html.httpx.Client", _BoomClient):
+        result = fetch_and_parse("2501.00001", tmp_path)
+
+    assert len(result.figures) == 1
+    assert result.figures[0].figure_number == 2  # first was dropped
+
+
+def test_fetch_and_parse_raises_html_unavailable_on_404(tmp_path):
+    fake_client = _client_returning(
+        httpx.HTTPStatusError("404", request=None, response=_FakeResponse(404, ""))
+    )
+    with patch("ppagent.arxiv_html.httpx.Client", fake_client):
+        with pytest.raises(HtmlUnavailable):
+            fetch_and_parse("9999.99999", tmp_path)
+
+
+def test_fetch_and_parse_raises_html_unavailable_on_connection_error(tmp_path):
+    fake_client = _client_returning(httpx.ConnectError("network down"))
+    with patch("ppagent.arxiv_html.httpx.Client", fake_client):
+        with pytest.raises(HtmlUnavailable):
+            fetch_and_parse("2501.00001", tmp_path)
+
+
+def test_fetch_and_parse_raises_parse_error_on_empty_body(tmp_path):
+    fake_client = _client_returning(
+        _FakeResponse(200, "<html><body><article></article></body></html>")
+    )
+    with patch("ppagent.arxiv_html.httpx.Client", fake_client):
+        with pytest.raises(ParseError):
+            fetch_and_parse("2501.00001", tmp_path)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("PPA_LIVE_NETWORK"),
+    reason="live network test; set PPA_LIVE_NETWORK=1 to run",
+)
+def test_fetch_and_parse_live(tmp_path):
+    """Real fetch of a known arXiv HTML paper. Manual / CI-nightly only."""
+    result = fetch_and_parse("2606.01075", tmp_path)
+    assert len(result.markdown) > 1000
+    assert len(result.figures) >= 1
+    for fig in result.figures:
+        assert (tmp_path / fig.image_path).exists()
+        assert result.figure_sections[fig.figure_number] in FIGURE_SECTIONS
