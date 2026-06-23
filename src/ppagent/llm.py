@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import base64
 import time
 import logging
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import instructor
@@ -503,34 +501,6 @@ class LLMClient:
         self._record_usage(raw_completion.usage)
         return response
 
-    def chat_vision(
-        self,
-        system: str,
-        user_text: str,
-        images: list[Path],
-    ) -> str:
-        """Multimodal chat completion: send images + text, return plain text.
-
-        ``images`` are file paths to PNG/JPEGs. Each is embedded as a base64
-        data URI so the call works with any OpenAI-compatible vision endpoint
-        without exposing local files. Returns the assistant's text response.
-        """
-        content: list[dict[str, Any]] = [{"type": "text", "text": user_text}]
-        for img_path in images:
-            data_uri = _image_to_data_uri(img_path)
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": data_uri},
-                }
-            )
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": content},
-        ]
-        resp = self.chat(messages)
-        return resp.output_text
-
     def _describe_config(self) -> str:
         """Return a short human-readable description of the current LLM config."""
         masked_key = (
@@ -669,12 +639,3 @@ class LLMClient:
             msgs.extend(context)
         msgs.append({"role": "user", "content": user})
         return msgs
-
-
-def _image_to_data_uri(img_path: Path) -> str:
-    """Encode an image file as a base64 data URI for vision API calls."""
-    ext = img_path.suffix.lower().lstrip(".") or "png"
-    mime = "jpeg" if ext in ("jpg", "jpeg") else "png"
-    data = img_path.read_bytes()
-    b64 = base64.b64encode(data).decode("ascii")
-    return f"data:image/{mime};base64,{b64}"

@@ -10,7 +10,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from ppagent.figures import FIGURE_SECTIONS, Figure, SelectedFigure
+from ppagent.arxiv_html import FIGURE_SECTIONS, Figure, SelectedFigure
 from ppagent.models import AgentResult, Paper, PaperReport, ReportSection
 from ppagent.storage import Storage
 

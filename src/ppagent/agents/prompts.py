@@ -716,41 +716,6 @@ CRITICIZER_USER_PROMPT_TEMPLATE = """\
 
 
 # ==============================================================================
-# Figure Selector Agent Prompts
-# ==============================================================================
-
-FIGURE_SELECTOR_SYSTEM_PROMPT = (
-    "You are an expert at reading research papers. You are shown every figure "
-    "extracted from a single paper, each labeled by its figure number and caption. "
-    "Your job is to decide which of these figures (if any) should be inserted into "
-    "the paper's analysis report to genuinely aid the reader's understanding.\n\n"
-    "Guidelines:\n"
-    "- Prefer diagrams that illustrate the method, architecture, pipeline, or "
-    "framework — i.e. overviews that make the paper's approach clearer.\n"
-    "- You may also select a results/ablation figure if it materially supports a "
-    "claim that the report discusses.\n"
-    "- Do NOT select a figure merely because it exists. If no figure clearly "
-    "helps explain the paper, return an empty selection.\n"
-    "- You may select zero, one, or several figures.\n\n"
-    "For EACH figure you select, assign it to the report section it best "
-    "illustrates. The allowed section keys are exactly:\n"
-    '  - "method": the method/architecture/pipeline description.\n'
-    '  - "evaluation": performance results, ablations, comparisons.\n'
-    '  - "benchmarks": benchmark setup, datasets, evaluation protocols.\n'
-    '  - "previous_works": related work / prior approaches.\n\n'
-    "Respond with ONLY a JSON object of this exact shape:\n"
-    '{"selected": [{"figure_number": <int>, "section": "<method|evaluation|benchmarks|previous_works>", "reason": "<short>"}], "none_reason": "<short, or empty>"}\n\n'
-    'If you select no figures, return {"selected": [], "none_reason": "<why, e.g. no diagrammatic figures in this paper>"}. '
-    "Do not include any text outside the JSON object."
-)
-
-FIGURE_SELECTOR_USER_PROMPT_TEMPLATE = """\
-Here are the figures extracted from the paper. Decide which (if any) to insert into the report, and which section each belongs to.
-
-{catalog}"""
-
-
-# ==============================================================================
 # Finder Agent Prompts
 # ==============================================================================
 
