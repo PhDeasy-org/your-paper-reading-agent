@@ -19,3 +19,7 @@ config/settings.toml
 # misc
 .qoder
 scratch/
+
+# Docs
+docs/
+
