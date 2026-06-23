@@ -134,7 +134,6 @@ def test_cli_config_show(mock_config):
         result = runner.invoke(app, ["config", "show"])
         assert result.exit_code == 0
         assert "Text LLM" in result.stdout
-        assert "Vision LLM" in result.stdout
         assert "Searcher LLM" in result.stdout
 
 

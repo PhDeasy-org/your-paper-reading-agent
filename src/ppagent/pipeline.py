@@ -406,7 +406,6 @@ class PaperPipeline:
                 writer_result=writer_result,
                 finder_result=finder_result,
                 criticizer_result=criticizer_result,
-                figure_selector_result=None,
                 classifier_result=classifier_result,
                 selected_figures=selected_figures or None,
                 paper_type=paper_type,

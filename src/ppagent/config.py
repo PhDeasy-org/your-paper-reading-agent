@@ -58,12 +58,6 @@ AGENT_LLM_ROLE: dict[str, str] = {
 }
 
 
-def _vision_default() -> LLMConfig:
-    """Default LLM config for the vision role (kept for backward-compat with
-    config files that still carry a [llms.vision] section; the field itself
-    was removed when figure selection moved to arXiv HTML)."""
-    return LLMConfig(model="gpt-4o")
-
 
 class LLMsConfig(BaseModel):
     """Per-role LLM configurations.

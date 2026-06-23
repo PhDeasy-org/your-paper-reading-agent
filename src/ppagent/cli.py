@@ -398,9 +398,7 @@ def config_show() -> None:
     console.print(
         f"  Text LLM (writer/finder/criticizer): {cfg.llms.text.model} @ {cfg.llms.text.base_url}"
     )
-    console.print(
-        f"  Vision LLM (figure_selector):       {cfg.llms.vision.model} @ {cfg.llms.vision.base_url}"
-    )
+
     console.print(
         f"  Searcher LLM (paper scoring):        {cfg.llms.searcher.model} @ {cfg.llms.searcher.base_url}"
     )
@@ -431,9 +429,9 @@ def config_init() -> None:
         console.print(f"[yellow]Config already exists:[/yellow] {CONFIG_PATH}")
         return
 
-    # Per-role LLM defaults: text (writer/finder/criticizer), vision
-    # (figure_selector), searcher (paper scoring). By default all three point
-    # at the same OpenAI endpoint so a new user only edits one api_key.
+    # Per-role LLM defaults: text (writer/finder/criticizer) and searcher
+    # (paper scoring). By default both point at the same OpenAI endpoint so
+    # a new user only edits one api_key.
     _llm_default = {
         "base_url": "https://api.openai.com/v1",
         "api_key": "sk-your-key-here",
@@ -447,10 +445,7 @@ def config_init() -> None:
 
     default = {
         "llms": {
-            # text & searcher default to the same model; vision must be a
-            # vision-capable model (gpt-4o is). Users can split roles later.
             "text": copy.deepcopy(_llm_default),
-            "vision": copy.deepcopy(_llm_default),
             "searcher": copy.deepcopy(_llm_default),
         },
         "search": {

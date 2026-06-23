@@ -278,7 +278,7 @@ class Assembler:
         writer_result: AgentResult,
         finder_result: AgentResult,
         criticizer_result: AgentResult,
-        figure_selector_result: AgentResult | None = None,
+
         classifier_result: AgentResult | None = None,
         selected_figures: list[SelectedFigure] | None = None,
         paper_type: str = "method",
@@ -335,8 +335,7 @@ class Assembler:
             finder_result,
             criticizer_result,
         ]
-        if figure_selector_result is not None:
-            report_results.append(figure_selector_result)
+
         if classifier_result is not None:
             report_results.append(classifier_result)
 

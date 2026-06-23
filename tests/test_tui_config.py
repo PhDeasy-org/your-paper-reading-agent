@@ -172,20 +172,16 @@ def test_snapshot_active_vendor_then_save_persists_active_edits(tmp_path):
     assert raw["llms"]["text"]["api_key"] == "deepseek-key"
 
 
-def test_vision_and_searcher_roles_independent():
-    """Switching vendors in one role must not bleed into the other roles."""
+def test_text_and_searcher_roles_independent():
+    """Switching vendors in one role must not bleed into the other role."""
     cfg = AppConfig()
-    _switch_vendor(cfg, "vision", "glm")
-    cfg.llms.vision.api_key = "glm-vision-key"
+    _switch_vendor(cfg, "text", "glm")
+    cfg.llms.text.api_key = "glm-text-key"
     _switch_vendor(cfg, "searcher", "deepseek")
     cfg.llms.searcher.api_key = "ds-searcher-key"
 
-    # Text role is untouched by the above switches.
-    assert detect_vendor(cfg.llms.text.base_url) == "openai"
-    assert cfg.llms.text.api_key == ""
-
     # Each role retains its own active provider.
-    assert cfg.llms.vision.api_key == "glm-vision-key"
+    assert cfg.llms.text.api_key == "glm-text-key"
     assert cfg.llms.searcher.api_key == "ds-searcher-key"
 
 
@@ -221,9 +217,9 @@ def test_latest_models_nav_target_is_correct():
     nav = next(item for item in grok_settings if item.label == "Latest Models")
     assert nav.target == "llm_text_grok_latest"
 
-    gemini_settings = get_menu_definition("llm_vision_gemini", AppConfig())
-    nav = next(item for item in gemini_settings if item.label == "Latest Models")
-    assert nav.target == "llm_vision_gemini_latest"
+    searcher_settings = get_menu_definition("llm_searcher_openai", AppConfig())
+    nav = next(item for item in searcher_settings if item.label == "Latest Models")
+    assert nav.target == "llm_searcher_openai_latest"
 
 
 def test_latest_models_picker_lists_vendor_aliases():
@@ -319,20 +315,18 @@ def test_latest_picker_menu_id_not_misrouted_to_vendor_settings():
 def test_api_key_change_propagates_to_sibling_roles_on_same_provider():
     """Editing a key in one role mirrors it into every sibling on that provider.
 
-    OpenAI is the default base_url for text/vision/searcher, so all three are
-    on the same provider. Entering the key once via "vision" should make it
-    appear in "text" and "searcher" immediately.
+    OpenAI is the default base_url for text/searcher, so both are on the same
+    provider. Entering the key via "text" should make it appear in "searcher"
+    immediately.
     """
     cfg = AppConfig()
     assert detect_vendor(cfg.llms.text.base_url) == "openai"
-    assert detect_vendor(cfg.llms.vision.base_url) == "openai"
     assert detect_vendor(cfg.llms.searcher.base_url) == "openai"
 
-    set_config_value(cfg, "llms.vision.api_key", "shared-openai-key")
+    set_config_value(cfg, "llms.text.api_key", "shared-openai-key")
 
     assert cfg.llms.text.api_key == "shared-openai-key"
     assert cfg.llms.searcher.api_key == "shared-openai-key"
-    assert cfg.llms.vision.api_key == "shared-openai-key"
 
 
 def test_api_key_change_does_not_touch_different_provider():
@@ -341,10 +335,9 @@ def test_api_key_change_does_not_touch_different_provider():
     # Move searcher to deepseek so it's no longer on the openai provider.
     _switch_vendor(cfg, "searcher", "deepseek")
 
-    set_config_value(cfg, "llms.vision.api_key", "openai-key")
+    set_config_value(cfg, "llms.text.api_key", "openai-key")
 
-    assert cfg.llms.text.api_key == "openai-key"  # same provider (openai)
-    assert cfg.llms.vision.api_key == "openai-key"
+    assert cfg.llms.text.api_key == "openai-key"
     # searcher is on deepseek — must stay blank, not inherit the openai key.
     assert cfg.llms.searcher.api_key == ""
 
@@ -352,10 +345,8 @@ def test_api_key_change_does_not_touch_different_provider():
 def test_switch_vendor_inherits_existing_key_for_same_provider():
     """Visiting a provider that a sibling already configured reuses its key.
 
-    Sets up text=openai with a key, then switches vision to a *different*
-    provider and back... instead we test the direct path: switch vision to
-    openai (its default) after text already holds an openai key. Since vision
-    is already on openai by default, use searcher instead.
+    Sets up text=openai with a key, then switches searcher to a *different*
+    provider and back to verify it picks up the shared key.
     """
     cfg = AppConfig()
     cfg.llms.text.api_key = "openai-key-from-text"
@@ -378,14 +369,13 @@ def test_save_config_persists_propagated_keys(tmp_path):
 
     cfg = AppConfig()
     cfg.root = tmp_path
-    set_config_value(cfg, "llms.vision.api_key", "shared-openai-key")
+    set_config_value(cfg, "llms.text.api_key", "shared-openai-key")
 
     config_file = tmp_path / "settings.toml"
     save_config(cfg, config_file)
 
     with open(config_file, "rb") as f:
         raw = tomllib.load(f)
-    # All three roles were on openai, so all three persist the shared key.
+    # Both roles were on openai, so both persist the shared key.
     assert raw["llms"]["text"]["api_key"] == "shared-openai-key"
-    assert raw["llms"]["vision"]["api_key"] == "shared-openai-key"
     assert raw["llms"]["searcher"]["api_key"] == "shared-openai-key"

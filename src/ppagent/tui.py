@@ -76,7 +76,7 @@ def _shared_api_key(cfg: AppConfig, vendor_key: str) -> str | None:
     """Return a non-blank api_key for ``vendor_key`` from any role, if known.
 
     API keys are per *provider*, not per role — the same OpenAI key works for
-    text/vision/searcher alike. So when the user fills in a key in one place,
+    text/searcher alike. So when the user fills in a key in one place,
     every other role visiting that provider can reuse it instead of asking for
     the key again.
     """
@@ -95,7 +95,7 @@ def _propagate_api_key(cfg: AppConfig, role: str, vendor_key: str, api_key: str)
 
     When the user edits the api_key for ``(role, vendor_key)``, copy the value
     into every other role whose live config or saved snapshot uses the same
-    provider. This keeps sibling roles (e.g. text and vision both on OpenAI) in
+    provider. This keeps sibling roles (e.g. text and searcher both on OpenAI) in
     lockstep so a key entered once is immediately available everywhere.
     """
     for other_role in _LLM_ROLES:
@@ -247,7 +247,7 @@ MENUS: dict[str, list[MenuItem]] = {
         MenuItem(
             "LLM API Settings",
             target="llms",
-            description="Configure per-role LLM providers: text (writer/finder/criticizer), vision (figure selector), searcher (paper scoring).",
+            description="Configure per-role LLM providers: text (writer/finder/criticizer), searcher (paper scoring).",
         ),
         MenuItem(
             "Search & Discovery Settings",
@@ -277,11 +277,7 @@ MENUS: dict[str, list[MenuItem]] = {
             target="llm_text_vendor",
             description="LLM used by the writer, finder, and criticizer agents for paper analysis.",
         ),
-        MenuItem(
-            "Vision LLM (figure selector)",
-            target="llm_vision_vendor",
-            description="Vision-capable LLM used by the figure_selector agent to pick pipeline diagrams.",
-        ),
+
         MenuItem(
             "Searcher LLM (paper scoring)",
             target="llm_searcher_vendor",
@@ -502,13 +498,12 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
         return MENUS[menu_id]
 
     # Check if vendor list menu
-    # e.g., "llm_text_vendor", "llm_vision_vendor", "llm_searcher_vendor"
-    vendor_list_match = re.match(r"^llm_(text|vision|searcher)_vendor$", menu_id)
+    # e.g., "llm_text_vendor", "llm_searcher_vendor"
+    vendor_list_match = re.match(r"^llm_(text|searcher)_vendor$", menu_id)
     if vendor_list_match:
         role = vendor_list_match.group(1)
         role_label = {
             "text": "Text LLM",
-            "vision": "Vision LLM",
             "searcher": "Searcher LLM",
         }[role]
 
@@ -540,12 +535,12 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
         return items
 
     # Check if "-latest" model picker menu.
-    # e.g., "llm_text_grok_latest", "llm_vision_gemini_latest"
+    # e.g., "llm_text_grok_latest", "llm_searcher_gemini_latest"
     # Must be matched BEFORE the generic vendor-setting regex below, otherwise
     # its "_latest" suffix gets swallowed by the vendor_key capture group
     # (e.g. "grok_latest").
     picker_match = re.match(
-        r"^llm_(text|vision|searcher)_([a-z0-9_]+)_latest$", menu_id
+        r"^llm_(text|searcher)_([a-z0-9_]+)_latest$", menu_id
     )
     if picker_match:
         role, vendor_key = picker_match.groups()
@@ -584,7 +579,7 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
     # Check if specific vendor setting menu
     # e.g., "llm_text_openai"
     vendor_setting_match = re.match(
-        r"^llm_(text|vision|searcher)_([a-z0-9_]+)$", menu_id
+        r"^llm_(text|searcher)_([a-z0-9_]+)$", menu_id
     )
     if vendor_setting_match:
         role, vendor_key = vendor_setting_match.groups()
@@ -612,7 +607,7 @@ def set_config_value(cfg: AppConfig, key_path: str, new_val: Any) -> None:
 
     For ``llms.<role>.api_key``, the new value is propagated to every sibling
     role whose active provider matches: API keys are per-provider, not per-role,
-    so entering the key once (e.g. in "vision") makes it appear immediately in
+    so entering the key once (e.g. in "text") makes it appear immediately in
     "text"/"searcher" when they use the same provider.
     """
     parts = key_path.split(".")
@@ -881,7 +876,7 @@ def run_config_tui() -> None:
                     # before the vendor-switch regex below, which would
                     # otherwise match (e.g. "grok_latest").
                     elif re.match(
-                        r"^llm_(text|vision|searcher)_[a-z0-9_]+_latest$",
+                        r"^llm_(text|searcher)_[a-z0-9_]+_latest$",
                         item.target,
                     ):
                         menu_stack.append((item.target, 0))
@@ -891,7 +886,7 @@ def run_config_tui() -> None:
                     # Checked before the vendor-switch regex for the same
                     # "_custom_model" suffix-swallowing reason as _latest.
                     elif re.match(
-                        r"^llm_(text|vision|searcher)_[a-z0-9_]+_custom_model$",
+                        r"^llm_(text|searcher)_[a-z0-9_]+_custom_model$",
                         item.target,
                     ):
                         live.stop()
@@ -903,7 +898,7 @@ def run_config_tui() -> None:
                         # Detect vendor setting item (e.g. llm_text_openai),
                         # but NOT vendor *list* items (e.g. llm_text_vendor).
                         match = re.match(
-                            r"^llm_(text|vision|searcher)_(?!vendor$)([a-z0-9_]+)$",
+                            r"^llm_(text|searcher)_(?!vendor$)([a-z0-9_]+)$",
                             item.target,
                         )
                         if match:
