@@ -58,7 +58,6 @@ AGENT_LLM_ROLE: dict[str, str] = {
 }
 
 
-
 class LLMsConfig(BaseModel):
     """Per-role LLM configurations.
 

@@ -90,6 +90,15 @@ def test_publish_without_report_dir_returns_false(sample_report):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def git_env(monkeypatch):
+    """Ensure git identity env vars are configured for all subprocesses in these tests."""
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+
+
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     """Run a git command inside ``repo`` with a deterministic identity."""
     env = {

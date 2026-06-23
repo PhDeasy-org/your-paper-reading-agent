@@ -278,7 +278,6 @@ class Assembler:
         writer_result: AgentResult,
         finder_result: AgentResult,
         criticizer_result: AgentResult,
-
         classifier_result: AgentResult | None = None,
         selected_figures: list[SelectedFigure] | None = None,
         paper_type: str = "method",

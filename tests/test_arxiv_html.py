@@ -207,7 +207,9 @@ def test_parse_html_assigns_section_per_figure():
     )
     _md, raw_figures = parse_html(html, page_url="https://arxiv.org/html/2501.00001v1")
     assert len(raw_figures) == 2
-    assert _map_section(raw_figures[0].section_title, raw_figures[0].caption) == "method"
+    assert (
+        _map_section(raw_figures[0].section_title, raw_figures[0].caption) == "method"
+    )
     assert (
         _map_section(raw_figures[1].section_title, raw_figures[1].caption)
         == "evaluation"

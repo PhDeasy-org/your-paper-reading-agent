@@ -65,9 +65,7 @@ class _StreamedRaw:
 
     text: str = ""
     usage: Any = None
-    choices: list[_StreamedChoice] = field(
-        default_factory=lambda: [_StreamedChoice()]
-    )
+    choices: list[_StreamedChoice] = field(default_factory=lambda: [_StreamedChoice()])
 
     @property
     def output_text(self) -> str:
@@ -91,7 +89,9 @@ class LLMResponse:
 
     @property
     def output_text(self) -> str:
-        is_mock = type(self.raw).__name__ in ("MagicMock", "Mock") or hasattr(self.raw, "_mock_self")
+        is_mock = type(self.raw).__name__ in ("MagicMock", "Mock") or hasattr(
+            self.raw, "_mock_self"
+        )
         if hasattr(self.raw, "output_text"):
             if not is_mock or "output_text" in self.raw.__dict__:
                 return self.raw.output_text
@@ -102,7 +102,9 @@ class LLMResponse:
 
     @property
     def output(self) -> list[Any]:
-        is_mock = type(self.raw).__name__ in ("MagicMock", "Mock") or hasattr(self.raw, "_mock_self")
+        is_mock = type(self.raw).__name__ in ("MagicMock", "Mock") or hasattr(
+            self.raw, "_mock_self"
+        )
         if hasattr(self.raw, "output"):
             if not is_mock or "output" in self.raw.__dict__:
                 return self.raw.output
@@ -203,9 +205,8 @@ class LLMClient:
                 return instructor.Mode.MD_JSON
             # Providers whose thinking mode is incompatible with tool_choice
             # (e.g. Qwen, Kimi) must fall back to MD_JSON when thinking is on.
-            if (
-                self.config.enable_thinking
-                and thinking_incompatible_with_tools_for(self.config.base_url)
+            if self.config.enable_thinking and thinking_incompatible_with_tools_for(
+                self.config.base_url
             ):
                 logger.info(
                     "Thinking enabled on provider incompatible with tool_choice; "
@@ -411,9 +412,7 @@ class LLMClient:
         except Exception as exc:
             # Mid-stream failure: do not retry. Surface a clear error.
             logger.error("Stream interrupted: %s", exc)
-            raise RuntimeError(
-                self._friendly_error(exc, config_desc)
-            ) from exc
+            raise RuntimeError(self._friendly_error(exc, config_desc)) from exc
 
         full_text = "".join(accumulated)
         return _StreamedRaw(text=full_text, usage=usage)

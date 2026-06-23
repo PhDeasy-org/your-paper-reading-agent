@@ -94,6 +94,7 @@ and accurate analysis. Use the search and read tools to gather information, then
 provide your research notes.
 """
 
+
 # -- Hyperlink directive shared across all agents -------------------------------
 # Used for EVERY report section except TL;DR so all rendered HTML/MD output
 # contains clickable references. Reused by the writer, criticizer, and finder
@@ -719,8 +720,7 @@ CRITICIZER_USER_PROMPT_TEMPLATE = """\
 # Finder Agent Prompts
 # ==============================================================================
 
-FINDER_SYSTEM_PROMPT = (
-    """\
+FINDER_SYSTEM_PROMPT = """\
 You are a research literature explorer. Given a paper's title and content, your job is to:
 
 1. Identify the key topics, methods, and claims of the paper.
@@ -736,9 +736,7 @@ CRITICAL: You must perform multi-turn search. Do not settle for a single search 
 
 Search for at least 3-5 different queries to ensure comprehensive coverage. Focus on \
 seminal works and recent impactful papers.
-"""
-    + _hyperlink_directive("the narrative throughout")
-)
+""" + _hyperlink_directive("the narrative throughout")
 
 FINDER_STRUCTURED_SYSTEM_PROMPT = (
     "You extract structured related work information from research exploration results."

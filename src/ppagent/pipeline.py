@@ -434,11 +434,7 @@ class PaperPipeline:
         """
         try:
             answer = (
-                input(
-                    f"Publish this report to {dest_labels}? [y/N] "
-                )
-                .strip()
-                .lower()
+                input(f"Publish this report to {dest_labels}? [y/N] ").strip().lower()
             )
         except (EOFError, KeyboardInterrupt):
             return False

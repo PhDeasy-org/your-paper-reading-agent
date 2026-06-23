@@ -81,9 +81,7 @@ class TestChatStreamChatCompletions:
 
     def test_usage_captured_from_trailing_chunk(self) -> None:
         client = _make_client()
-        usage = SimpleNamespace(
-            prompt_tokens=5, completion_tokens=3, total_tokens=8
-        )
+        usage = SimpleNamespace(prompt_tokens=5, completion_tokens=3, total_tokens=8)
         chunks = [_chat_delta("hi"), _chat_usage_chunk(usage)]
         client._client = MagicMock()
         client._client.chat.completions.create.return_value = iter(chunks)
@@ -100,9 +98,7 @@ class TestChatStreamChatCompletions:
     def test_reconstructed_response_has_chat_completions_shape(self) -> None:
         client = _make_client()
         client._client = MagicMock()
-        client._client.chat.completions.create.return_value = iter(
-            [_chat_delta("abc")]
-        )
+        client._client.chat.completions.create.return_value = iter([_chat_delta("abc")])
 
         resp = client.chat(
             [{"role": "user", "content": "hi"}],
@@ -119,9 +115,7 @@ class TestChatStreamChatCompletions:
     def test_stream_options_requested_for_chat_completions(self) -> None:
         client = _make_client()
         client._client = MagicMock()
-        client._client.chat.completions.create.return_value = iter(
-            [_chat_delta("x")]
-        )
+        client._client.chat.completions.create.return_value = iter([_chat_delta("x")])
 
         client.chat(
             [{"role": "user", "content": "hi"}],

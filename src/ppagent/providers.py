@@ -179,7 +179,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="glm-4-plus",
         url_patterns=("bigmodel.cn", "z.ai"),
         thinking_extra_body=_THINKING_ENABLED,
-        # Source: docs.bigmodel.cn/cn/guide/start/model-overview. 
+        # Source: docs.bigmodel.cn/cn/guide/start/model-overview.
         latest_models=("glm-5.2", "glm-5v-turbo"),
     ),
     ProviderSpec(

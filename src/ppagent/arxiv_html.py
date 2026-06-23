@@ -173,11 +173,11 @@ def _extract_article(html: str) -> str:
         if m.group(1) == "/":
             depth -= 1
             if depth == 0:
-                return html[start:m.start()]
+                return html[start : m.start()]
         else:
             depth += 1
         pos = m.end()
-    return html[start:m.start()]
+    return html[start : m.start()]
 
 
 def _img_src_is_skippable(src: str) -> bool:

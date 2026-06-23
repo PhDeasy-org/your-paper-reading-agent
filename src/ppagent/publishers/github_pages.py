@@ -9,6 +9,7 @@ name) and must have a local clone with push access configured (``repo_path``).
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -106,6 +107,7 @@ class GithubPagesPublisher(PublisherBase):
         """
         add_path = str(Path(self.posts_subdir) / safe_name)
         env = {
+            **os.environ,
             "GIT_TERMINAL_PROMPT": "0",  # never hang on credential prompts
         }
         subprocess.run(

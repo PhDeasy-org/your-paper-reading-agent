@@ -10,6 +10,7 @@ from ppagent.providers import (
     get_provider,
 )
 
+
 def test_detect_vendor():
     # Test standard vendors
     assert detect_vendor("https://api.openai.com/v1") == "openai"
@@ -193,9 +194,7 @@ def test_text_and_searcher_roles_independent():
 def test_latest_models_nav_item_shown_for_every_provider_with_aliases():
     """Every provider with a non-empty latest_models shows 'Latest Models'."""
     cfg = AppConfig()
-    expected_with_picker = {
-        spec.key for spec in PROVIDERS if spec.latest_models
-    }
+    expected_with_picker = {spec.key for spec in PROVIDERS if spec.latest_models}
     expected_without = {spec.key for spec in PROVIDERS if not spec.latest_models}
 
     for vendor_key in expected_with_picker:

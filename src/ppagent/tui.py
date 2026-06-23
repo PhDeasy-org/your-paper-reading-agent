@@ -90,7 +90,9 @@ def _shared_api_key(cfg: AppConfig, vendor_key: str) -> str | None:
     return None
 
 
-def _propagate_api_key(cfg: AppConfig, role: str, vendor_key: str, api_key: str) -> None:
+def _propagate_api_key(
+    cfg: AppConfig, role: str, vendor_key: str, api_key: str
+) -> None:
     """Mirror an api_key change into every role's live config + snapshot.
 
     When the user edits the api_key for ``(role, vendor_key)``, copy the value
@@ -277,7 +279,6 @@ MENUS: dict[str, list[MenuItem]] = {
             target="llm_text_vendor",
             description="LLM used by the writer, finder, and criticizer agents for paper analysis.",
         ),
-
         MenuItem(
             "Searcher LLM (paper scoring)",
             target="llm_searcher_vendor",
@@ -539,9 +540,7 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
     # Must be matched BEFORE the generic vendor-setting regex below, otherwise
     # its "_latest" suffix gets swallowed by the vendor_key capture group
     # (e.g. "grok_latest").
-    picker_match = re.match(
-        r"^llm_(text|searcher)_([a-z0-9_]+)_latest$", menu_id
-    )
+    picker_match = re.match(r"^llm_(text|searcher)_([a-z0-9_]+)_latest$", menu_id)
     if picker_match:
         role, vendor_key = picker_match.groups()
         spec = get_provider(vendor_key)
@@ -578,9 +577,7 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
 
     # Check if specific vendor setting menu
     # e.g., "llm_text_openai"
-    vendor_setting_match = re.match(
-        r"^llm_(text|searcher)_([a-z0-9_]+)$", menu_id
-    )
+    vendor_setting_match = re.match(r"^llm_(text|searcher)_([a-z0-9_]+)$", menu_id)
     if vendor_setting_match:
         role, vendor_key = vendor_setting_match.groups()
         return _llm_submenu_items(role, vendor_key)
