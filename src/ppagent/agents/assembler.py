@@ -233,6 +233,9 @@ def render_markdown_with_math(text: str) -> str:
             original.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         )
         html = html.replace(placeholder, escaped_original)
+        # Also replace HTML-escaped placeholder in case it was placed inside code/pre blocks
+        escaped_placeholder = placeholder.replace("<", "&lt;").replace(">", "&gt;")
+        html = html.replace(escaped_placeholder, escaped_original)
 
     return html
 

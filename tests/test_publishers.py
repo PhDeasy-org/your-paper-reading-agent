@@ -123,7 +123,24 @@ def _make_report_dir(tmp_path: Path) -> Path:
     report_dir.mkdir(parents=True)
     (report_dir / "report.html").write_text("<h1>hi</h1>")
     (report_dir / "report.md").write_text("# hi")
-    (report_dir / "metadata.json").write_text("{}")
+    
+    import json
+    metadata = {
+        "paper": {
+            "title": "My Paper",
+            "published_at": "2025-06-10T00:00:00Z",
+            "authors": ["Author One", "Author Two"],
+            "arxiv_url": "https://arxiv.org/abs/2506.12345"
+        },
+        "tldr": {
+            "content": "A short summary of the paper."
+        },
+        "metadata": {
+            "content": "| **Keywords** | test-driven-development, unit-tests |"
+        },
+        "paper_type": "method"
+    }
+    (report_dir / "metadata.json").write_text(json.dumps(metadata))
     (report_dir / "figures").mkdir()
     (report_dir / "figures" / "figure_1.png").write_bytes(b"\x89PNG fake")
     return report_dir
@@ -179,6 +196,14 @@ def test_publish_copies_files_and_commits(tmp_path, monkeypatch):
     dest = repo / "papers" / safe_name
     assert (dest / "report.html").read_text() == "<h1>hi</h1>"
     assert (dest / "figures" / "figure_1.png").read_bytes() == b"\x89PNG fake"
+
+    # --- Assert index.html was generated at root and has expected content ---
+    index_file = repo / "index.html"
+    assert index_file.is_file()
+    index_content = index_file.read_text()
+    assert "My Paper" in index_content
+    assert "Author One" in index_content
+    assert "test-driven-development" in index_content
 
     # --- Assert a commit was made and pushed to the remote. ---
     log = _git(repo, "log", "--oneline").stdout

@@ -715,3 +715,19 @@ class TestRegressionFromActualReports:
         assert "$a &lt; b$" in html
         assert "$c &gt; d$" in html
         assert "$x &amp; y$" in html
+
+
+class TestMathInCodeBlocks:
+    """Math blocks/inline math inside code/pre blocks must be replaced properly and not show as placeholders."""
+
+    def test_math_in_inline_code(self):
+        text = "Check `math $x$` in code."
+        html = render_markdown_with_math(text)
+        assert "<!--MATH_PLACEHOLDER" not in html
+        assert "$x$" in html
+
+    def test_math_in_fenced_code_block(self):
+        text = "```python\n# formula: $E = mc^2$\nx = m * c**2\n```"
+        html = render_markdown_with_math(text)
+        assert "<!--MATH_PLACEHOLDER" not in html
+        assert "$E = mc^2$" in html
