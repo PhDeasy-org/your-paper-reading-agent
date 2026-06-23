@@ -10,16 +10,14 @@ from typing import Any
 
 from rich.console import Console
 
-from ppagent import hf, pdf
+from ppagent import arxiv_html, hf, pdf
 from ppagent.agents.assembler import Assembler
 from ppagent.agents.classifier import ClassifierAgent
 from ppagent.agents.criticizer import CriticizerAgent
 from ppagent.agents.finder import FinderAgent
-from ppagent.agents.figure_selector import FigureSelectorAgent
 from ppagent.agents.searcher import SearcherAgent
 from ppagent.agents.writer import WriterAgent
 from ppagent.config import AppConfig
-from ppagent import figures as figures_mod
 from ppagent.hf import HfCliError
 from ppagent.llm import LLMClient
 from ppagent.models import AgentResult, Paper, PaperContent, PaperReport
@@ -37,7 +35,6 @@ class PaperPipeline:
         # One LLMClient per role; agents are wired to the role they belong to.
         self._clients = {
             "text": LLMClient(config.llms.text),
-            "vision": LLMClient(config.llms.vision),
             "searcher": LLMClient(config.llms.searcher),
         }
         self.classifier = ClassifierAgent(self._clients["text"], config)
@@ -45,7 +42,6 @@ class PaperPipeline:
         self.writer = WriterAgent(self._clients["text"], config)
         self.finder = FinderAgent(self._clients["searcher"], config)
         self.criticizer = CriticizerAgent(self._clients["text"], config)
-        self.figure_selector = FigureSelectorAgent(self._clients["vision"], config)
         self.storage = Storage(config.output_dir)
         # Map each report-stage agent name to the model it uses, so the
         # assembler can compute a per-model cost breakdown.
@@ -178,12 +174,6 @@ class PaperPipeline:
             f"    [dim]Base URL: {self.config.llms.text.base_url} | Temperature: {self.config.llms.text.temperature} | Max tokens: {self.config.llms.text.max_tokens} | Thinking: {self.config.llms.text.enable_thinking}[/dim]"
         )
         self.console.print(
-            f"  • [bold]Vision model (Figure Selector):[/bold] [cyan]{self.config.llms.vision.model}[/cyan]"
-        )
-        self.console.print(
-            f"    [dim]Base URL: {self.config.llms.vision.base_url} | Temperature: {self.config.llms.vision.temperature} | Max tokens: {self.config.llms.vision.max_tokens} | Thinking: {self.config.llms.vision.enable_thinking}[/dim]"
-        )
-        self.console.print(
             f"  • [bold]Searcher model (Paper Scoring):[/bold] [cyan]{self.config.llms.searcher.model}[/cyan]"
         )
         self.console.print(
@@ -192,7 +182,7 @@ class PaperPipeline:
 
         # Fetch paper info
         self.console.print(
-            "\n[bold yellow]🔄 Phase 1/8: Fetching paper metadata...[/bold yellow]"
+            "\n[bold yellow]🔄 Phase 1/6: Fetching paper metadata...[/bold yellow]"
         )
         with self.console.status(
             "[dim]Contacting HuggingFace/arXiv APIs...[/dim]", spinner="dots"
@@ -218,44 +208,64 @@ class PaperPipeline:
                     )
                     paper = Paper(id=paper_id, title=paper_id)
 
-        # Get paper content: try hf papers read first, fall back to PDF
+        # Get paper content + figures from arXiv HTML. Falls back to PDF text
+        # (no figures) when HTML is unavailable for older papers.
         self.console.print(
-            "[bold yellow]🔄 Phase 2/8: Retrieving paper full text content...[/bold yellow]"
+            "[bold yellow]🔄 Phase 2/6: Retrieving paper content + figures from arXiv HTML...[/bold yellow]"
         )
+        paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
+        selected_figures: list[arxiv_html.SelectedFigure] = []
         content_md = ""
-        pdf_path = None
         with self.console.status(
-            "[dim]Retrieving full text from HuggingFace or extracting from PDF...[/dim]",
-            spinner="dots",
+            "[dim]Fetching and parsing arXiv HTML...[/dim]", spinner="dots"
         ):
             try:
-                content_md = hf.paper_read(paper_id)
-                self.console.print(
-                    f"  [green]✓[/green] Successfully retrieved paper content via HuggingFace API ({len(content_md)} characters)"
+                parsed = arxiv_html.fetch_and_parse(
+                    paper_id, paper_dir, max_figures=self.config.report.max_figures
                 )
-            except HfCliError:
+                content_md = parsed.markdown
+                selected_figures = [
+                    arxiv_html.SelectedFigure(
+                        figure=fig,
+                        section=parsed.figure_sections[fig.figure_number],
+                    )
+                    for fig in parsed.figures
+                ]
                 self.console.print(
-                    "  [dim]HuggingFace paper read failed. Attempting to download PDF and extract text...[/dim]"
+                    f"  [green]✓[/green] Parsed arXiv HTML ({len(content_md)} chars, "
+                    f"{len(selected_figures)} figure(s))"
+                )
+            except arxiv_html.HtmlUnavailable as exc:
+                self.console.print(
+                    f"  [dim]arXiv HTML unavailable ({exc}); falling back to PDF text...[/dim]"
                 )
                 if self.config.report.download_pdf:
                     try:
-                        self.console.print(
-                            f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]"
-                        )
                         pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
-                        self.console.print("  Extracting text from PDF...")
                         content_md = pdf.extract_text(pdf_path)
                         self.console.print(
-                            f"  [green]✓[/green] Successfully extracted PDF text ({len(content_md)} characters)"
+                            f"  [green]✓[/green] Extracted PDF text ({len(content_md)} chars, no figures)"
                         )
                     except Exception as pdf_exc:
                         self.console.print(
-                            f"  [red]✗[/red] PDF download/extraction failed: {pdf_exc}"
+                            f"  [red]✗[/red] PDF fallback failed: {pdf_exc}"
+                        )
+            except arxiv_html.ParseError as exc:
+                self.console.print(
+                    f"  [yellow]⚠[/yellow] arXiv HTML parse failed ({exc}); trying PDF text."
+                )
+                if self.config.report.download_pdf:
+                    try:
+                        pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
+                        content_md = pdf.extract_text(pdf_path)
+                    except Exception as pdf_exc:
+                        self.console.print(
+                            f"  [red]✗[/red] PDF fallback failed: {pdf_exc}"
                         )
 
         if not content_md:
             self.console.print(
-                "  [yellow]⚠[/yellow] No full text content available. Falling back to using paper abstract/summary."
+                "  [yellow]⚠[/yellow] No full text content available. Falling back to paper abstract/summary."
             )
             content_md = paper.summary or "Paper content unavailable."
 
@@ -286,7 +296,7 @@ class PaperPipeline:
 
         # Run writer and finder
         self.console.print(
-            "[bold yellow]🔄 Phase 4/8: Running Writer and Finder agents...[/bold yellow]"
+            "[bold yellow]🔄 Phase 4/6: Running Writer and Finder agents...[/bold yellow]"
         )
         writer_result: AgentResult | None = None
         finder_result: AgentResult | None = None
@@ -360,7 +370,7 @@ class PaperPipeline:
 
         # Criticizer depends on writer output
         self.console.print(
-            "[bold yellow]🔄 Phase 5/8: Running Criticizer agent to refine report...[/bold yellow]"
+            "[bold yellow]🔄 Phase 5/6: Running Criticizer agent to refine report...[/bold yellow]"
         )
         with self.console.status(
             "[dim]Running Criticizer LLM...[/dim]", spinner="dots"
@@ -382,108 +392,10 @@ class PaperPipeline:
                     f"  [red]✗[/red] Criticizer agent failed: {criticizer_result.error}"
                 )
 
-        # Ensure we have the PDF downloaded for figure extraction.
-        # (hf papers read may have succeeded without a local PDF.)
+        # Assemble. Figures were already collected from arXiv HTML in Phase 2
+        # (selected_figures); no separate extraction/selection step remains.
         self.console.print(
-            "[bold yellow]🔄 Phase 6/8: Ensuring PDF is downloaded for figure extraction...[/bold yellow]"
-        )
-        with self.console.status(
-            "[dim]Checking and downloading PDF if necessary...[/dim]", spinner="dots"
-        ):
-            if pdf_path is None and self.config.report.download_pdf:
-                try:
-                    self.console.print(
-                        f"  Downloading PDF to: [dim]{self.config.pdf_cache_dir}[/dim]"
-                    )
-                    pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
-                    self.console.print(
-                        f"  [green]✓[/green] PDF downloaded successfully to [dim]{pdf_path}[/dim]"
-                    )
-                except Exception as exc:
-                    self.console.print(
-                        f"  [yellow]⚠[/yellow] Could not download PDF for figures: {exc}"
-                    )
-                    pdf_path = None
-            elif pdf_path is not None:
-                self.console.print(
-                    f"  [green]✓[/green] PDF already available at [dim]{pdf_path}[/dim]"
-                )
-            else:
-                self.console.print(
-                    "  [dim]PDF downloading is disabled; skipping PDF check.[/dim]"
-                )
-
-        # Extract captioned figures and let the vision LLM decide which (if any)
-        # to insert. The LLM may pick zero, one, or several figures and assign
-        # each to the report section it best illustrates.
-        # Figures are written into the paper's report directory so they sit
-        # next to report.html and can be referenced by a relative path.
-        self.console.print(
-            "[bold yellow]🔄 Phase 7/8: Extracting and selecting paper figures...[/bold yellow]"
-        )
-        paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
-        selected_figures: list[figures_mod.SelectedFigure] = []
-        figure_selector_result: AgentResult | None = None
-        if pdf_path is not None:
-            with self.console.status(
-                "[dim]Extracting figures and running Vision LLM selector...[/dim]",
-                spinner="dots",
-            ):
-                try:
-                    self.console.print("  Extracting figures from PDF...")
-                    figures = figures_mod.extract_figures(pdf_path, paper_dir)
-                    self.console.print(
-                        f"  Found {len(figures)} figures/tables in the PDF."
-                    )
-                except Exception as exc:
-                    self.console.print(
-                        f"  [red]✗[/red] Figure extraction failed: {exc}"
-                    )
-                    figures = []
-                if figures:
-                    self.console.print(
-                        f"  Running figure selector agent using vision model: [cyan]{self.config.llms.vision.model}[/cyan]..."
-                    )
-                    figure_selector_result = self.figure_selector.run(
-                        figures=figures, base_dir=paper_dir
-                    )
-                    if figure_selector_result.success:
-                        selected_figures = figure_selector_result.data.get(
-                            "selected_figures", []
-                        )
-                        if selected_figures:
-                            self.console.print(
-                                f"  [green]✓[/green] Selected {len(selected_figures)} figure(s):"
-                            )
-                            for sf in selected_figures:
-                                fig_title = (
-                                    sf.figure.caption[:60] + "..."
-                                    if len(sf.figure.caption) > 60
-                                    else sf.figure.caption
-                                )
-                                self.console.print(
-                                    f"    • Figure {sf.figure.figure_number} → [cyan]{sf.section}[/cyan] - [italic]{fig_title}[/italic]"
-                                )
-                        else:
-                            none_reason = figure_selector_result.data.get("none_reason")
-                            reason_msg = (
-                                f" (reason: {none_reason})" if none_reason else ""
-                            )
-                            self.console.print(
-                                f"  [dim]Figure selector chose not to insert any figures{reason_msg}.[/dim]"
-                            )
-                    else:
-                        self.console.print(
-                            f"  [red]✗[/red] Figure selector agent failed: {figure_selector_result.error}"
-                        )
-        else:
-            self.console.print(
-                "  [dim]No PDF path available; skipping figure extraction.[/dim]"
-            )
-
-        # Assemble
-        self.console.print(
-            "[bold yellow]🔄 Phase 8/8: Assembling final report...[/bold yellow]"
+            "[bold yellow]🔄 Phase 6/6: Assembling final report...[/bold yellow]"
         )
         with self.console.status(
             "[dim]Formatting, generating LaTeX equations, and writing report files...[/dim]",
@@ -494,7 +406,7 @@ class PaperPipeline:
                 writer_result=writer_result,
                 finder_result=finder_result,
                 criticizer_result=criticizer_result,
-                figure_selector_result=figure_selector_result,
+                figure_selector_result=None,
                 classifier_result=classifier_result,
                 selected_figures=selected_figures or None,
                 paper_type=paper_type,

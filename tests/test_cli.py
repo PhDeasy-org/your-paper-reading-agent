@@ -238,7 +238,6 @@ def test_pipeline_arxiv_fallback_integration(mock_config):
     from ppagent.hf import HfCliError
 
     mock_config.llms.text.api_key = "dummy"
-    mock_config.llms.vision.api_key = "dummy"
     mock_config.llms.searcher.api_key = "dummy"
 
     paper_id = "2606.01075"
@@ -246,18 +245,22 @@ def test_pipeline_arxiv_fallback_integration(mock_config):
     with (
         patch("ppagent.hf.paper_info", side_effect=HfCliError("not found")),
         patch("ppagent.hf.fetch_arxiv_info") as mock_fetch_arxiv,
-        patch("ppagent.hf.paper_read", return_value="some markdown content"),
-        patch("ppagent.pdf.download_pdf"),
-        patch("ppagent.pdf.extract_text"),
+        patch("ppagent.arxiv_html.fetch_and_parse") as mock_fetch_html,
         patch("ppagent.agents.classifier.ClassifierAgent.run") as mock_classifier,
         patch("ppagent.agents.writer.WriterAgent.run") as mock_writer,
         patch("ppagent.agents.finder.FinderAgent.run") as mock_finder,
         patch("ppagent.agents.criticizer.CriticizerAgent.run") as mock_criticizer,
     ):
         from ppagent.models import AgentResult, Paper
+        from ppagent.arxiv_html import ParsedHtml
 
         mock_paper = Paper(id=paper_id, title="Attention Is All You Need")
         mock_fetch_arxiv.return_value = mock_paper
+
+        # arXiv HTML parse succeeds with some markdown and no figures.
+        mock_fetch_html.return_value = ParsedHtml(
+            markdown="some markdown content", figures=[], figure_sections={}
+        )
 
         # Mock agents
         mock_classifier.return_value = AgentResult(
