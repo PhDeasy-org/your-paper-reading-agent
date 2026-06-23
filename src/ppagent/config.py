@@ -227,7 +227,7 @@ class PublishConfig(BaseModel):
 class AppConfig(BaseModel):
     """Top-level application configuration."""
 
-    # Per-role LLM configs (text / vision / searcher). Backward-compatible with
+    # Per-role LLM configs (text / searcher). Backward-compatible with
     # legacy flat `[llm]` sections via migration in load_config().
     llms: LLMsConfig = Field(default_factory=LLMsConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
@@ -286,7 +286,7 @@ def _migrate_legacy_llm(raw: dict[str, Any]) -> dict[str, Any]:
 
     raw["llms"] = {role: copy.deepcopy(flat) for role in _LLM_ROLES}
     logger.info(
-        "Migrated legacy [llm] config to [llms.text/vision/searcher]. "
+        "Migrated legacy [llm] config to [llms.text/searcher]. "
         "Re-run `ppagent config` and save to persist the new structure."
     )
     return raw

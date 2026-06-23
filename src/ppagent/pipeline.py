@@ -151,7 +151,7 @@ class PaperPipeline:
         3. Run Writer and Finder agents (in parallel by default, or
            sequentially with live streaming when ``config.report.stream``).
         4. Run Criticizer agent on the Writer's output to find weaknesses.
-        5. Extract and select figures using the Vision LLM.
+        5. Assemble and render to markdown/HTML.
         6. Assemble the final report.
 
         Args:

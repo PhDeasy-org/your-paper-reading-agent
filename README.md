@@ -5,8 +5,7 @@
 **Turn any arXiv paper into a structured, illustrated reading report — in one command.**
 
 A multi-agent pipeline: a **Writer** drafts the analysis, a **Finder** pulls related
-work, a **Criticizer** audits claims, and a **Vision** agent picks the best figure
-from the PDF. Everything is assembled into a clean Markdown + HTML report.
+work, and a **Criticizer** audits claims. Figures are pulled directly from the paper's arXiv HTML version. Everything is assembled into a clean Markdown + HTML report.
 
 [Installation](#installation) · [Usage](#generate-a-report) · [Showcase](#showcase) · [How it works](#how-it-works)
 
@@ -14,7 +13,7 @@ from the PDF. Everything is assembled into a clean Markdown + HTML report.
 
 <br>
 
-<p align="center"><em>A report generated for <a href="https://arxiv.org/abs/2606.01075">arXiv:2606.01075</a> — TL;DR, metadata, and the vision-selected figure, all auto-produced.</em></p>
+<p align="center"><em>A report generated for <a href="https://arxiv.org/abs/2606.01075">arXiv:2606.01075</a> — TL;DR, metadata, and an extracted figure, all auto-produced.</em></p>
 
 <p align="center">
   <img src="assets/report_hero.png" alt="ppagent report — title, TL;DR, metadata, and selected figure" width="720">
@@ -97,7 +96,7 @@ equations, linked citations, and the agent-selected figure.
 <p align="center"><em>Critical Analysis — every limitation is tagged by severity (<b style="color:#dc2626">HIGH</b> / <b style="color:#d97706">MEDIUM</b> / <b style="color:#6b7280">LOW</b>).</em></p>
 <p align="center"><img src="assets/report_critical.png" width="640"></p>
 
-<p align="center"><em>Figures are extracted from the source PDF, then a vision agent selects the most informative one.</em></p>
+<p align="center"><em>Figures are pulled directly from the paper's arXiv HTML version.</em></p>
 <p align="center"><img src="assets/example_figure.png" width="540"></p>
 
 <details>
@@ -110,7 +109,7 @@ equations, linked citations, and the agent-selected figure.
 - **Performance evaluation** — benchmark numbers and ablations
 - **Critical analysis** — independent audit, severity-tagged
 - **Related papers** — discovered by the Finder agent
-- **Selected figure** — chosen by the vision agent from the PDF
+- **Selected figure** — pulled from the arXiv HTML version
 
 </details>
 
@@ -135,7 +134,7 @@ Reports are written to `output/<date>/<paper-id>/report.{md,html}`.
 - **Output language** — set `report.language` in the config menu (`中文`, `日本語`, `Français`, …).
 - **Publishing** — push to Notion, a WeChat Official Account, or a blog webhook.
 - **Custom agents & publishers** — drop a Python file in `~/.config/ppagent/agents/` or `…/publishers/`.
-- **Per-role LLMs** — the Writer, Vision, and Searcher agents can each use a different model.
+- **Per-role LLMs** — the Writer and Searcher agents can each use a different model.
 - **Environment overrides** — `PPA_LLM_API_KEY`, `PPA_LLM_BASE_URL`, `PPA_LLM_MODEL`.
 
 </details>
@@ -158,11 +157,11 @@ HF/arXiv paper
             │  Finder  ─┘                            │
             └──────────────────┬─────────────────────┘
                                ▼
-                    ┌─────────────┐   ┌───────────────┐
-                    │ Criticizer  │   │ Vision: pick  │
-                    │ (audit)     │   │ best figure   │
-                    └──────┬──────┘   └───────┬───────┘
-                           └────────┬─────────┘
+                    ┌─────────────┐
+                    │ Criticizer  │
+                    │ (audit)     │
+                    └──────┬──────┘
+                           │
                                     ▼
                           ┌──────────────────┐
                           │    Assembler     │──▶ report.md + report.html
