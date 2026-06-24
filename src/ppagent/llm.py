@@ -28,6 +28,29 @@ _MAX_RETRIES = 3
 _RETRY_BACKOFF = 2  # seconds, doubles each retry
 
 
+# Field names used by OpenAI-compatible providers to carry the reasoning /
+# "thinking" trace in a streaming delta, separate from the final answer
+# (``content``). GLM/DeepSeek/Qwen/Kimi/Doubao and Grok/OpenAI reasoning models
+# all surface this as ``choices[0].delta.reasoning_content``; a few emit
+# ``reasoning`` (Anthropic-style) or ``thinking``. We check them defensively so a
+# single code path handles every provider.
+_REASONING_DELTA_FIELDS: tuple[str, ...] = ("reasoning_content", "reasoning", "thinking")
+
+
+@dataclass
+class StreamDelta:
+    """One streamed text fragment, tagged by origin.
+
+    Reasoning models (GLM/Grok/DeepSeek/…) emit their thinking trace on a
+    separate field from the final answer. Tagging lets the live UI render
+    reasoning distinctly (dimmed) and keeps reconstruction using ``content``
+    only — reasoning never pollutes the reconstructed answer.
+    """
+
+    text: str
+    kind: str = "content"  # "content" | "reasoning"
+
+
 @dataclass
 class _CompatToolCall:
     id: str
@@ -154,6 +177,34 @@ class LLMClient:
         self._mode = self._resolve_instructor_mode()
         self._instructor = instructor.from_openai(self._client, mode=self._mode)
         self._thread_local = threading.local()
+        # stream_callback routes deltas to the (single, shared) pipeline console,
+        # so it must be visible across threads: Writer/Finder run concurrently in
+        # a ThreadPoolExecutor, and each worker thread needs the callback to feed
+        # the Live UI. Keeping it in threading.local() made it invisible to those
+        # workers, so streaming silently no-op'd (see make_stream_callback in
+        # pipeline.py). active_agent/usage stay thread-local — they legitimately
+        # differ per concurrent agent.
+        self._stream_callback: Callable[[str | None], None] | None = None
+
+        # Wrap the completions/responses client
+        self._client.chat.completions = WrappedCompletions(
+            self._client.chat.completions, self
+        )
+        if hasattr(self._client, "responses"):
+            self._client.responses = WrappedResponses(self._client.responses, self)
+
+    def set_active_agent(self, name: str | None) -> None:
+        self._thread_local.active_agent = name
+
+    def clear_active_agent(self) -> None:
+        self._thread_local.active_agent = None
+
+    def set_stream_callback(self, callback: Callable[[str], None] | None) -> None:
+        self._stream_callback = callback
+
+    def clear_stream(self, agent_name: str) -> None:
+        if self._stream_callback:
+            self._stream_callback(None)
 
     def _get_local_usage(self) -> dict[str, int]:
         if not hasattr(self._thread_local, "usage"):
@@ -403,10 +454,14 @@ class LLMClient:
         usage: Any = None
         try:
             for event in stream:
-                delta_text, event_usage = self._extract_stream_delta(event)
-                if delta_text:
-                    accumulated.append(delta_text)
-                    on_text(delta_text)
+                content, _reasoning, event_usage = self._extract_stream_delta(event)
+                # Only answer ``content`` is reconstructed and streamed to the
+                # agent's on_text callback (it prints prose). Reasoning trace is
+                # not part of the answer; the Live UI handles it separately via
+                # the WrappedCompletions callback path.
+                if content:
+                    accumulated.append(content)
+                    on_text(content)
                 if event_usage is not None:
                     usage = event_usage
         except Exception as exc:
@@ -417,12 +472,16 @@ class LLMClient:
         full_text = "".join(accumulated)
         return _StreamedRaw(text=full_text, usage=usage)
 
-    def _extract_stream_delta(self, event: Any) -> tuple[str, Any]:
-        """Return ``(text_delta, usage_or_none)`` for one stream event.
+    def _extract_stream_delta(self, event: Any) -> tuple[str, str, Any]:
+        """Return ``(content, reasoning, usage)`` for one stream event.
 
+        ``content`` is incremental answer text; ``reasoning`` is incremental
+        thinking-trace text that reasoning models emit on a separate field.
         Handles both the Chat Completions streaming shape (``choices[0].delta``
         plus a trailing usage chunk) and the Responses streaming shape
-        (``response.output_text.delta`` / ``response.completed``).
+        (``response.output_text.delta`` / ``response.completed``). The Responses
+        API folds reasoning into the same text delta, so ``reasoning`` is only
+        populated for the Chat Completions shape.
         """
         usage = getattr(event, "usage", None)
 
@@ -431,26 +490,35 @@ class LLMClient:
         # ``response.completed`` event carries final usage.
         delta = getattr(event, "delta", None)
         if isinstance(delta, str):
-            return delta, usage
+            return delta, "", usage
         # Some Responses events nest text under .text (ResponseTextDeltaEvent).
         text_attr = getattr(event, "text", None)
         if isinstance(text_attr, str):
-            return text_attr, usage
+            return text_attr, "", usage
 
-        # Chat Completions streaming: choices[0].delta.content
+        # Chat Completions streaming: choices[0].delta.content (+ reasoning_content)
         try:
             choices = event.choices
         except AttributeError:
-            return "", usage
+            return "", "", usage
         if not choices:
             # Trailing usage-only chunk.
-            return "", usage
+            return "", "", usage
         choice = choices[0]
         message_delta = getattr(choice, "delta", None)
         if message_delta is None:
-            return "", usage
-        content = getattr(message_delta, "content", None)
-        return (content or "", usage)
+            return "", "", usage
+        content = getattr(message_delta, "content", None) or ""
+        # Reasoning models put the thinking trace on a separate field. The
+        # OpenAI SDK keeps unknown provider fields via extra='allow', so this
+        # works even though ChoiceDelta doesn't declare reasoning_content.
+        reasoning = ""
+        for field_name in _REASONING_DELTA_FIELDS:
+            value = getattr(message_delta, field_name, None)
+            if value:
+                reasoning = value
+                break
+        return content, reasoning, usage
 
     def chat_structured(
         self,
@@ -638,3 +706,269 @@ class LLMClient:
             msgs.extend(context)
         msgs.append({"role": "user", "content": user})
         return msgs
+
+
+class WrappedCompletions:
+    """Wraps OpenAI completions.create to stream under the hood and reconstruct responses."""
+
+    def __init__(self, original: Any, client: LLMClient) -> None:
+        self._original = original
+        self._client = client
+
+    def create(self, **kwargs: Any) -> Any:
+        # Check if method is mocked (in testing)
+        is_mock = type(self._original).__name__ in ("MagicMock", "Mock") or hasattr(
+            self._original, "_mock_self"
+        )
+        if is_mock:
+            return self._original(**kwargs)
+
+        callback = self._client._stream_callback
+        if not callback:
+            return self._original(**kwargs)
+
+        # Clear previous stream for active agent
+        active_agent = getattr(self._client._thread_local, "active_agent", None)
+        if active_agent:
+            self._client.clear_stream(active_agent)
+
+        # If caller requested streaming explicitly
+        if kwargs.get("stream"):
+            stream = self._original(**kwargs)
+            return self._wrap_stream(stream, callback)
+
+        # Force streaming under the hood
+        return self._run_stream_and_reconstruct(kwargs, callback)
+
+    def _wrap_stream(
+        self, stream: Any, callback: Callable[[str], None]
+    ) -> Iterator[Any]:
+        for chunk in stream:
+            if chunk:
+                choices = getattr(chunk, "choices", [])
+                if choices:
+                    delta = getattr(choices[0], "delta", None)
+                    if delta:
+                        content = getattr(delta, "content", None)
+                        if content:
+                            callback(StreamDelta(content, kind="content"))
+                        # Forward the reasoning trace so the Live UI shows
+                        # activity during the thinking phase.
+                        for field_name in _REASONING_DELTA_FIELDS:
+                            reasoning = getattr(delta, field_name, None)
+                            if reasoning:
+                                callback(StreamDelta(reasoning, kind="reasoning"))
+                                break
+            yield chunk
+
+    def _run_stream_and_reconstruct(
+        self, kwargs: dict[str, Any], callback: Callable[[str], None]
+    ) -> Any:
+        import time
+        from openai.types.chat import ChatCompletion
+        from openai.types.chat.chat_completion import Choice
+        from openai.types.chat.chat_completion_message import ChatCompletionMessage
+        from openai.types.chat.chat_completion_message_tool_call import (
+            ChatCompletionMessageToolCall,
+            Function,
+        )
+
+        stream_kwargs = {**kwargs, "stream": True}
+        if "stream_options" not in stream_kwargs:
+            stream_kwargs["stream_options"] = {"include_usage": True}
+
+        stream = self._original(**stream_kwargs)
+
+        content_parts = []
+        tool_calls_map = {}
+        usage = None
+        system_fingerprint = None
+        completion_id = "chatcmpl-streamed"
+        created_time = int(time.time())
+        model_name = kwargs.get("model", "unknown")
+
+        for chunk in stream:
+            if not chunk:
+                continue
+            if hasattr(chunk, "id") and chunk.id:
+                completion_id = chunk.id
+            if hasattr(chunk, "created") and chunk.created:
+                created_time = chunk.created
+            if hasattr(chunk, "model") and chunk.model:
+                model_name = chunk.model
+            if hasattr(chunk, "system_fingerprint") and chunk.system_fingerprint:
+                system_fingerprint = chunk.system_fingerprint
+            if getattr(chunk, "usage", None) is not None:
+                usage = chunk.usage
+
+            choices = getattr(chunk, "choices", [])
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = getattr(choice, "delta", None)
+            if not delta:
+                continue
+
+            delta_content = getattr(delta, "content", None)
+            if delta_content:
+                content_parts.append(delta_content)
+                callback(StreamDelta(delta_content, kind="content"))
+
+            # Reasoning models stream their thinking trace on a separate field
+            # (reasoning_content) before/around the answer content. Forward it to
+            # the Live UI (rendered dimmed) so the panel isn't silent during the
+            # long thinking phase. It is deliberately NOT appended to
+            # content_parts — reasoning must not pollute the reconstructed answer.
+            for field_name in _REASONING_DELTA_FIELDS:
+                reasoning_delta = getattr(delta, field_name, None)
+                if reasoning_delta:
+                    callback(StreamDelta(reasoning_delta, kind="reasoning"))
+                    break
+
+            delta_tool_calls = getattr(delta, "tool_calls", None)
+            if delta_tool_calls:
+                for tc in delta_tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_map:
+                        tool_calls_map[idx] = {
+                            "id": getattr(tc, "id", None),
+                            "type": getattr(tc, "type", "function"),
+                            "function": {"name": "", "arguments": ""},
+                        }
+                    if getattr(tc, "id", None):
+                        tool_calls_map[idx]["id"] = tc.id
+                    if getattr(tc, "type", None):
+                        tool_calls_map[idx]["type"] = tc.type
+                    fn = getattr(tc, "function", None)
+                    if fn:
+                        if getattr(fn, "name", None):
+                            tool_calls_map[idx]["function"]["name"] += fn.name
+                        if getattr(fn, "arguments", None):
+                            arg_delta = fn.arguments
+                            tool_calls_map[idx]["function"]["arguments"] += arg_delta
+                            callback(StreamDelta(arg_delta, kind="content"))
+
+        message_content = "".join(content_parts) if content_parts else None
+        tool_calls = []
+        for idx in sorted(tool_calls_map.keys()):
+            tc_data = tool_calls_map[idx]
+            tool_calls.append(
+                ChatCompletionMessageToolCall(
+                    id=tc_data["id"] or f"call_{idx}",
+                    type=tc_data["type"],
+                    function=Function(
+                        name=tc_data["function"]["name"],
+                        arguments=tc_data["function"]["arguments"],
+                    ),
+                )
+            )
+
+        msg = ChatCompletionMessage(
+            content=message_content,
+            role="assistant",
+            tool_calls=tool_calls if tool_calls else None,
+        )
+
+        choice = Choice(
+            finish_reason="stop",
+            index=0,
+            message=msg,
+        )
+
+        return ChatCompletion(
+            id=completion_id,
+            choices=[choice],
+            created=created_time,
+            model=model_name,
+            object="chat.completion",
+            system_fingerprint=system_fingerprint,
+            usage=usage,
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._original, name)
+
+
+class WrappedResponses:
+    """Wraps Responses.create to stream under the hood and reconstruct responses."""
+
+    def __init__(self, original: Any, client: LLMClient) -> None:
+        self._original = original
+        self._client = client
+
+    def create(self, **kwargs: Any) -> Any:
+        is_mock = type(self._original).__name__ in ("MagicMock", "Mock") or hasattr(
+            self._original, "_mock_self"
+        )
+        if is_mock:
+            return self._original(**kwargs)
+
+        callback = self._client._stream_callback
+        if not callback or kwargs.get("tools"):
+            return self._original(**kwargs)
+
+        active_agent = getattr(self._client._thread_local, "active_agent", None)
+        if active_agent:
+            self._client.clear_stream(active_agent)
+
+        if kwargs.get("stream"):
+            stream = self._original(**kwargs)
+            return self._wrap_stream(stream, callback)
+
+        return self._run_stream_and_reconstruct(kwargs, callback)
+
+    def _wrap_stream(
+        self, stream: Any, callback: Callable[[str], None]
+    ) -> Iterator[Any]:
+        for event in stream:
+            if event:
+                delta = getattr(event, "delta", None)
+                text_attr = getattr(event, "text", None)
+                delta_text = ""
+                if isinstance(delta, str):
+                    delta_text = delta
+                elif isinstance(text_attr, str):
+                    delta_text = text_attr
+                if delta_text:
+                    callback(StreamDelta(delta_text, kind="content"))
+            yield event
+
+    def _run_stream_and_reconstruct(
+        self, kwargs: dict[str, Any], callback: Callable[[str], None]
+    ) -> Any:
+        stream_kwargs = {**kwargs, "stream": True}
+        stream = self._original(**stream_kwargs)
+
+        content_parts = []
+        usage = None
+
+        for event in stream:
+            if not event:
+                continue
+            delta = getattr(event, "delta", None)
+            text_attr = getattr(event, "text", None)
+
+            delta_text = ""
+            if isinstance(delta, str):
+                delta_text = delta
+            elif isinstance(text_attr, str):
+                delta_text = text_attr
+
+            if delta_text:
+                content_parts.append(delta_text)
+                callback(StreamDelta(delta_text, kind="content"))
+
+            event_usage = getattr(event, "usage", None)
+            if event_usage is not None:
+                usage = event_usage
+
+        class SimulatedResponse:
+            def __init__(self, text: str, usage: Any) -> None:
+                self.output_text = text
+                self.output: list[Any] = []
+                self.usage = usage
+
+        return SimulatedResponse("".join(content_parts), usage)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._original, name)

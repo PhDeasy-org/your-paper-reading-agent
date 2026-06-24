@@ -212,23 +212,28 @@ class GithubPagesPublisher(PublisherBase):
                         rel_link = f"./{self.posts_subdir}/{item.name}/report.html"
                         arxiv_url = paper_data.get("arxiv_url", "")
 
-                        papers.append({
-                            "title": title,
-                            "published_date": published_date,
-                            "tldr": tldr,
-                            "authors": author_str,
-                            "keywords": keywords_str,
-                            "paper_type": paper_type,
-                            "link": rel_link,
-                            "arxiv_url": arxiv_url,
-                        })
+                        papers.append(
+                            {
+                                "title": title,
+                                "published_date": published_date,
+                                "tldr": tldr,
+                                "authors": author_str,
+                                "keywords": keywords_str,
+                                "paper_type": paper_type,
+                                "link": rel_link,
+                                "arxiv_url": arxiv_url,
+                            }
+                        )
                     except Exception as exc:
-                        logger.warning("Failed to parse metadata for %s: %s", item.name, exc)
+                        logger.warning(
+                            "Failed to parse metadata for %s: %s", item.name, exc
+                        )
 
         papers.sort(key=lambda x: x["published_date"], reverse=True)
 
         try:
             from jinja2 import Template
+
             template_content = self._get_index_template()
             template = Template(template_content)
             rendered_html = template.render(

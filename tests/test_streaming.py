@@ -249,3 +249,201 @@ class TestChatStreamErrors:
                     on_text=lambda _d: None,
                 )
         mock_sleep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Cross-thread stream_callback: Writer/Finder run in a ThreadPoolExecutor
+# ---------------------------------------------------------------------------
+
+
+class TestStreamCallbackCrossThread:
+    """The pipeline runs Writer/Finder concurrently in worker threads, but the
+    stream callback is registered on the main thread. It used to live in
+    ``threading.local()``, so worker threads saw ``callback=None`` and streaming
+    silently no-op'd ("No active LLM streams"). The callback must now be visible
+    across threads so the Live UI receives deltas from worker-thread agents."""
+
+    def test_callback_fires_from_worker_thread(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        from ppagent.llm import StreamDelta, WrappedCompletions
+
+        client = _make_client()
+
+        def fake_create(**_kwargs):
+            return iter([_chat_delta("Hello "), _chat_delta("world!")])
+
+        completions = WrappedCompletions(fake_create, client)
+
+        received: list[object] = []
+        client.set_stream_callback(received.append)
+
+        def worker() -> None:
+            client.set_active_agent("Writer")
+            resp = completions.create(model="m", messages=[])
+            assert resp.choices[0].message.content == "Hello world!"
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            executor.submit(worker).result()
+
+        # Deltas arrive as tagged StreamDelta objects (content kind).
+        deltas = [d for d in received if d is not None]
+        assert deltas == [
+            StreamDelta("Hello ", kind="content"),
+            StreamDelta("world!", kind="content"),
+        ], deltas
+
+    def test_callback_is_stored_on_instance_not_thread_local(self) -> None:
+        client = _make_client()
+        client.set_stream_callback(lambda _d: None)
+        # Must be a shared instance attribute, not a thread-local one.
+        assert client._stream_callback is not None
+        assert not hasattr(client._thread_local, "stream_callback")
+
+
+# ---------------------------------------------------------------------------
+# Reasoning models: reasoning_content is streamed but kept out of the answer
+# ---------------------------------------------------------------------------
+
+
+class TestReasoningStream:
+    """Reasoning models (GLM/Grok/DeepSeek/…) emit their thinking trace on
+    ``choices[0].delta.reasoning_content``, separate from the final answer
+    ``content``. The old streaming code read only ``content``, so during the
+    long thinking phase nothing reached the Live UI ("title shows, no output").
+    These guard that reasoning is forwarded to the callback (tagged) while the
+    reconstructed answer stays content-only."""
+
+    def _chunk(self, content=None, reasoning=None):
+        """A Chat Completions chunk whose delta carries content and/or
+        reasoning_content (the field providers use for the thinking trace)."""
+        delta = SimpleNamespace(content=content, reasoning_content=reasoning)
+        choice = SimpleNamespace(delta=delta)
+        return SimpleNamespace(
+            choices=[choice], usage=None, id="x", created=1, model="m",
+            system_fingerprint=None,
+        )
+
+    def test_extract_stream_delta_returns_content_and_reasoning(self) -> None:
+        """The unified extractor returns both channels for a reasoning chunk."""
+        client = _make_client()
+        chunk = self._chunk(content="answer", reasoning="thinking")
+        content, reasoning, _usage = client._extract_stream_delta(chunk)
+        assert content == "answer"
+        assert reasoning == "thinking"
+
+    def test_reasoning_only_chunk_yields_empty_content(self) -> None:
+        """A pure-thinking chunk (no answer yet) has empty content — this is
+        exactly the case that produced the silent UI."""
+        client = _make_client()
+        chunk = self._chunk(content=None, reasoning="deliberating…")
+        content, reasoning, _usage = client._extract_stream_delta(chunk)
+        assert content == ""
+        assert reasoning == "deliberating…"
+
+    def test_reasoning_streamed_to_callback_but_not_reconstructed(self) -> None:
+        """WrappedCompletions must forward reasoning to the Live UI callback
+        (tagged kind='reasoning') AND keep it out of the reconstructed message
+        content — the thinking trace is not the answer."""
+        from ppagent.llm import StreamDelta, WrappedCompletions
+
+        client = _make_client()
+        chunks = [
+            self._chunk(reasoning="Let me think... "),
+            self._chunk(reasoning="about the paper."),
+            self._chunk(content="Here is "),
+            self._chunk(content="the answer."),
+        ]
+        completions = WrappedCompletions(lambda **_k: iter(chunks), client)
+
+        received: list[object] = []
+        client.set_stream_callback(received.append)
+
+        resp = completions.create(model="m", messages=[])
+
+        deltas = [d for d in received if d is not None]
+        kinds = [d.kind for d in deltas]
+        # Reasoning arrives first (dimmed in the UI), then content.
+        assert kinds == ["reasoning", "reasoning", "content", "content"], deltas
+        # The reconstructed answer contains ONLY the content, never reasoning.
+        assert resp.choices[0].message.content == "Here is the answer."
+        assert "think" not in resp.choices[0].message.content
+
+    def test_reasoning_field_aliases_are_supported(self) -> None:
+        """Some providers use ``reasoning`` or ``thinking`` instead of
+        ``reasoning_content``; all known aliases must be picked up."""
+        from ppagent.llm import StreamDelta, WrappedCompletions
+
+        for field in ("reasoning", "thinking"):
+            client = _make_client()
+
+            def make_chunks(_field=field):
+                delta = SimpleNamespace(content=None)
+                setattr(delta, _field, "trace " + _field)
+                # ensure reasoning_content absent so the alias is what triggers
+                delta.reasoning_content = None
+                choice = SimpleNamespace(delta=delta)
+                yield SimpleNamespace(
+                    choices=[choice], usage=None, id="x", created=1, model="m",
+                    system_fingerprint=None,
+                )
+
+            completions = WrappedCompletions(lambda **_k: make_chunks(), client)
+            received: list[object] = []
+            client.set_stream_callback(received.append)
+            completions.create(model="m", messages=[])
+
+            reasoning = [d for d in received
+                         if d is not None and d.kind == "reasoning"]
+            assert reasoning == [StreamDelta("trace " + field, kind="reasoning")], (
+                field, received
+            )
+
+    @pytest.mark.parametrize(
+        "base_url,model",
+        [
+            ("https://api.deepseek.com", "deepseek-v4-pro"),
+            ("https://api.z.ai/api/coding/paas/v4", "glm-5.2"),
+            ("https://api.x.ai/v1", "grok-4.3"),
+        ],
+    )
+    def test_reasoning_streamed_for_each_configured_provider(
+        self, base_url: str, model: str
+    ) -> None:
+        """Each reasoning provider in the registry emits reasoning_content on
+        ``choices[0].delta.reasoning_content``. This locks in the field name for
+        DeepSeek, GLM (z.ai), and Grok (xAI) — the providers configured in
+        settings.toml — so a future refactor can't silently drop reasoning
+        streaming for one of them."""
+        from ppagent.llm import WrappedCompletions
+
+        client = _make_client()
+        client.config.base_url = base_url
+        client.config.model = model
+
+        def chunks():
+            # Exact DeepSeek/GLM/Grok streaming shape: reasoning first, then
+            # answer content, never both in one delta.
+            for reasoning in ["thinking step ", "two"]:
+                delta = SimpleNamespace(content=None, reasoning_content=reasoning)
+                yield SimpleNamespace(
+                    choices=[SimpleNamespace(delta=delta)], usage=None,
+                    id="x", created=1, model=model, system_fingerprint=None,
+                )
+            delta = SimpleNamespace(content="the answer", reasoning_content=None)
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=delta)], usage=None,
+                id="x", created=1, model=model, system_fingerprint=None,
+            )
+
+        completions = WrappedCompletions(lambda **_k: chunks(), client)
+        received: list[object] = []
+        client.set_stream_callback(received.append)
+        resp = completions.create(model=model, messages=[])
+
+        deltas = [d for d in received if d is not None]
+        assert [d.kind for d in deltas] == [
+            "reasoning", "reasoning", "content"
+        ], (model, deltas)
+        # Answer reconstructs from content only; reasoning never leaks in.
+        assert resp.choices[0].message.content == "the answer"

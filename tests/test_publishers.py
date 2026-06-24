@@ -123,22 +123,21 @@ def _make_report_dir(tmp_path: Path) -> Path:
     report_dir.mkdir(parents=True)
     (report_dir / "report.html").write_text("<h1>hi</h1>")
     (report_dir / "report.md").write_text("# hi")
-    
+
     import json
+
     metadata = {
         "paper": {
             "title": "My Paper",
             "published_at": "2025-06-10T00:00:00Z",
             "authors": ["Author One", "Author Two"],
-            "arxiv_url": "https://arxiv.org/abs/2506.12345"
+            "arxiv_url": "https://arxiv.org/abs/2506.12345",
         },
-        "tldr": {
-            "content": "A short summary of the paper."
-        },
+        "tldr": {"content": "A short summary of the paper."},
         "metadata": {
             "content": "| **Keywords** | test-driven-development, unit-tests |"
         },
-        "paper_type": "method"
+        "paper_type": "method",
     }
     (report_dir / "metadata.json").write_text(json.dumps(metadata))
     (report_dir / "figures").mkdir()

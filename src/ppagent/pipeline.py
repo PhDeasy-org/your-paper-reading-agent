@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+from ppagent.tui_pipeline import PipelineConsoleWrapper
 
 from ppagent import arxiv_html, hf, pdf
 from ppagent.agents.assembler import Assembler
@@ -31,12 +32,28 @@ class PaperPipeline:
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        self.console = Console()
+        self.console = PipelineConsoleWrapper(Console())
         # One LLMClient per role; agents are wired to the role they belong to.
         self._clients = {
             "text": LLMClient(config.llms.text),
             "searcher": LLMClient(config.llms.searcher),
         }
+
+        def make_stream_callback(client_role: str) -> Callable[[Any], None]:
+            def callback(delta: Any) -> None:
+                # `delta` is None to clear, a StreamDelta (content/reasoning), or
+                # a bare str for backward compatibility.
+                active_agent = getattr(
+                    self._clients[client_role]._thread_local, "active_agent", None
+                )
+                if active_agent:
+                    self.console.update_stream(active_agent, delta)
+
+            return callback
+
+        self._clients["text"].set_stream_callback(make_stream_callback("text"))
+        self._clients["searcher"].set_stream_callback(make_stream_callback("searcher"))
+
         self.classifier = ClassifierAgent(self._clients["text"], config)
         self.searcher = SearcherAgent(self._clients["searcher"], config)
         self.writer = WriterAgent(self._clients["text"], config)
@@ -56,6 +73,43 @@ class PaperPipeline:
             storage=self.storage,
             model_map=model_map,
         )
+
+        # Wrap search and report dynamically to manage the live UI
+        original_search = self.search
+
+        def wrapped_search(*args: Any, **kwargs: Any) -> Any:
+            is_live_owner = False
+            if (
+                isinstance(self.console, PipelineConsoleWrapper)
+                and not self.console._live
+            ):
+                self.console.start_live()
+                is_live_owner = True
+            try:
+                return original_search(*args, **kwargs)
+            finally:
+                if is_live_owner:
+                    self.console.stop_live()
+
+        self.search = wrapped_search
+
+        original_report = self.report
+
+        def wrapped_report(*args: Any, **kwargs: Any) -> Any:
+            is_live_owner = False
+            if (
+                isinstance(self.console, PipelineConsoleWrapper)
+                and not self.console._live
+            ):
+                self.console.start_live()
+                is_live_owner = True
+            try:
+                return original_report(*args, **kwargs)
+            finally:
+                if is_live_owner:
+                    self.console.stop_live()
+
+        self.report = wrapped_report
 
     def search(
         self,
@@ -434,7 +488,9 @@ class PaperPipeline:
         """
         try:
             answer = (
-                input(f"Publish this report to {dest_labels}? [y/N] ").strip().lower()
+                self.console.input(f"Publish this report to {dest_labels}? [y/N] ")
+                .strip()
+                .lower()
             )
         except (EOFError, KeyboardInterrupt):
             return False
@@ -546,7 +602,7 @@ class PaperPipeline:
                 if prompt_replace:
                     try:
                         answer = (
-                            input(
+                            self.console.input(
                                 f'Report for "{paper.title}" already exists. Regenerate? [y/N] '
                             )
                             .strip()

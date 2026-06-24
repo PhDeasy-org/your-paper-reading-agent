@@ -58,6 +58,23 @@ class AgentBase(ABC):
         self.llm = llm
         self.config = config
 
+        # Wrap run to automatically set active agent name in thread local storage
+        original_run = self.run
+
+        def wrapped_run(*args: Any, **kwargs: Any) -> Any:
+            display_name = self.name.capitalize()
+            if hasattr(self.llm, "set_active_agent"):
+                self.llm.set_active_agent(display_name)
+            if hasattr(self.llm, "clear_stream"):
+                self.llm.clear_stream(display_name)
+            try:
+                return original_run(*args, **kwargs)
+            finally:
+                if hasattr(self.llm, "clear_active_agent"):
+                    self.llm.clear_active_agent()
+
+        self.run = wrapped_run
+
     @abstractmethod
     def run(self, **kwargs: Any) -> AgentResult:
         """Execute the agent's task and return a structured result."""
