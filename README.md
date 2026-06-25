@@ -23,7 +23,7 @@ work, and a **Criticizer** audits claims. Figures are pulled directly from the p
 
 ## Installation
 
-**macOS (one-liner):**
+**macOS / Linux (one-liner):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AutoPhd-org/your-paper-reading-agent/main/install.sh | bash

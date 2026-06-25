@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ppagent installer for macOS
+# ppagent installer for macOS and Linux
 # Usage: curl -fsSL <url> | bash   (or just: bash install.sh)
 
 set -euo pipefail
@@ -21,30 +21,41 @@ header()  { echo -e "\n${BOLD}$*${NC}"; }
 
 # ─── Preflight ───────────────────────────────────────────────────────────────
 
-if [[ "$(uname)" != "Darwin" ]]; then
-    error "This installer is for macOS only. Detected: $(uname)"
-    exit 1
-fi
+OS_NAME="$(uname)"
+case "$OS_NAME" in
+    Darwin) PLATFORM="macos" ;;
+    Linux)  PLATFORM="linux" ;;
+    *)
+        error "Unsupported OS: $OS_NAME (expected Darwin or Linux)"
+        exit 1
+        ;;
+esac
 
 echo -e "${BOLD}"
 echo "  ╔═══════════════════════════════════╗"
-echo "  ║      ppagent installer (macOS)    ║"
+echo "  ║   ppagent installer ($PLATFORM)   ║"
 echo "  ╚═══════════════════════════════════╝"
 echo -e "${NC}"
 
-# ─── Homebrew ────────────────────────────────────────────────────────────────
+# ─── Homebrew (macOS only) ───────────────────────────────────────────────────
 
-header "Checking Homebrew..."
-if command -v brew &>/dev/null; then
-    success "Homebrew found: $(brew --prefix)"
-else
-    info "Homebrew not found. Installing..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    # Add to PATH for Apple Silicon
-    if [[ -f /opt/homebrew/bin/brew ]]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
+# Homebrew is only used on macOS (as a fallback for installing Python 3.12).
+# On Linux we skip it entirely: uv (installed below) bootstraps a managed
+# CPython 3.12, so no system package manager or sudo is required.
+
+if [[ "$PLATFORM" == "macos" ]]; then
+    header "Checking Homebrew..."
+    if command -v brew &>/dev/null; then
+        success "Homebrew found: $(brew --prefix)"
+    else
+        info "Homebrew not found. Installing..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # Add to PATH for Apple Silicon
+        if [[ -f /opt/homebrew/bin/brew ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        fi
+        success "Homebrew installed"
     fi
-    success "Homebrew installed"
 fi
 
 # ─── Python 3.12+ ────────────────────────────────────────────────────────────
@@ -66,11 +77,18 @@ done
 
 if [[ -n "$PYTHON_CMD" ]]; then
     success "Python found: $($PYTHON_CMD --version)"
-else
+elif [[ "$PLATFORM" == "macos" ]]; then
     info "Python 3.12+ not found. Installing via Homebrew..."
     brew install python@3.12
     PYTHON_CMD="python3.12"
     success "Python 3.12 installed"
+else
+    # On Linux we don't reach for a distro package manager (which would need
+    # sudo and varies by distro). uv — installed in the next step — manages its
+    # own CPython: `uv sync` / `uv run` automatically download CPython 3.12
+    # when no compatible interpreter is present.
+    info "Python 3.12+ not found. It will be provided by uv in the next step."
+    PYTHON_CMD=""
 fi
 
 # ─── uv ──────────────────────────────────────────────────────────────────────
