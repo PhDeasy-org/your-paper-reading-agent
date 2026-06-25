@@ -721,11 +721,15 @@ class WrappedCompletions:
             self._original, "_mock_self"
         )
         if is_mock:
-            return self._original(**kwargs)
+            if callable(self._original):
+                return self._original(**kwargs)
+            return self._original.create(**kwargs)
 
         callback = self._client._stream_callback
         if not callback:
-            return self._original(**kwargs)
+            if callable(self._original):
+                return self._original(**kwargs)
+            return self._original.create(**kwargs)
 
         # Clear previous stream for active agent
         active_agent = getattr(self._client._thread_local, "active_agent", None)
@@ -734,7 +738,10 @@ class WrappedCompletions:
 
         # If caller requested streaming explicitly
         if kwargs.get("stream"):
-            stream = self._original(**kwargs)
+            if callable(self._original):
+                stream = self._original(**kwargs)
+            else:
+                stream = self._original.create(**kwargs)
             return self._wrap_stream(stream, callback)
 
         # Force streaming under the hood
@@ -777,7 +784,10 @@ class WrappedCompletions:
         if "stream_options" not in stream_kwargs:
             stream_kwargs["stream_options"] = {"include_usage": True}
 
-        stream = self._original(**stream_kwargs)
+        if callable(self._original):
+            stream = self._original(**stream_kwargs)
+        else:
+            stream = self._original.create(**stream_kwargs)
 
         content_parts = []
         tool_calls_map = {}
@@ -846,7 +856,6 @@ class WrappedCompletions:
                         if getattr(fn, "arguments", None):
                             arg_delta = fn.arguments
                             tool_calls_map[idx]["function"]["arguments"] += arg_delta
-                            callback(StreamDelta(arg_delta, kind="content"))
 
         message_content = "".join(content_parts) if content_parts else None
         tool_calls = []
@@ -901,18 +910,25 @@ class WrappedResponses:
             self._original, "_mock_self"
         )
         if is_mock:
-            return self._original(**kwargs)
+            if callable(self._original):
+                return self._original(**kwargs)
+            return self._original.create(**kwargs)
 
         callback = self._client._stream_callback
-        if not callback or kwargs.get("tools"):
-            return self._original(**kwargs)
+        if not callback:
+            if callable(self._original):
+                return self._original(**kwargs)
+            return self._original.create(**kwargs)
 
         active_agent = getattr(self._client._thread_local, "active_agent", None)
         if active_agent:
             self._client.clear_stream(active_agent)
 
         if kwargs.get("stream"):
-            stream = self._original(**kwargs)
+            if callable(self._original):
+                stream = self._original(**kwargs)
+            else:
+                stream = self._original.create(**kwargs)
             return self._wrap_stream(stream, callback)
 
         return self._run_stream_and_reconstruct(kwargs, callback)
@@ -937,7 +953,10 @@ class WrappedResponses:
         self, kwargs: dict[str, Any], callback: Callable[[str], None]
     ) -> Any:
         stream_kwargs = {**kwargs, "stream": True}
-        stream = self._original(**stream_kwargs)
+        if callable(self._original):
+            stream = self._original(**stream_kwargs)
+        else:
+            stream = self._original.create(**stream_kwargs)
 
         content_parts = []
         usage = None

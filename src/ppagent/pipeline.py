@@ -126,6 +126,7 @@ class PaperPipeline:
         Returns:
             A list of Paper objects sorted by relevance score, up to the maximum configured limit.
         """
+        self.console.begin_phase("Fetching papers from HuggingFace")
         self.console.print("[bold]Searching papers matching user profile...[/bold]")
         with self.console.status(
             "[dim]Fetching papers from HuggingFace...[/dim]", spinner="dots"
@@ -136,6 +137,9 @@ class PaperPipeline:
                 sort=self.config.search.sort,
             )
         logger.info("Fetched %d papers from HuggingFace", len(papers))
+        self.console.end_phase(
+            success=True, summary=f"Fetched [cyan]{len(papers)}[/cyan] papers"
+        )
 
         profile_path = self.config.profile_path
         if not profile_path.exists():
@@ -144,6 +148,7 @@ class PaperPipeline:
             )
             return papers[: self.config.search.max_reports_per_run]
 
+        self.console.begin_phase("Scoring paper relevance")
         profile = profile_path.read_text()
         with self.console.status(
             "[dim]Scoring paper relevance...[/dim]", spinner="dots"
@@ -152,11 +157,16 @@ class PaperPipeline:
 
         if not result.success:
             logger.error("Searcher failed: %s", result.error)
+            self.console.end_phase(success=False, summary=f"Failed: {result.error}")
             return []
 
         matched = result.data["papers"]
         logger.info("Searcher matched %d / %d papers", len(matched), len(papers))
         self.console.print(f"Found [green]{len(matched)}[/green] matched papers.")
+        self.console.end_phase(
+            success=True,
+            summary=f"Matched [green]{len(matched)}[/green] / {len(papers)} papers",
+        )
         return matched[: self.config.search.max_reports_per_run]
 
     def _run_agent_streaming(
@@ -165,29 +175,20 @@ class PaperPipeline:
         run_fn: Callable[..., Any],
         **kwargs: Any,
     ) -> AgentResult:
-        """Run a tool-capable agent with its research phase streamed to stdout.
+        """Run a tool-capable agent, letting the Live UI streams panel show output.
 
-        Prints a labeled header, streams text deltas as they arrive (each delta
-        printed inline, soft-wrapped), and finishes with a trailing newline and
-        a success/failure marker. The agent's structured-output phase is silent
-        — only the prose it generates via tool-calling is streamed.
+        LLM token streaming is handled by the ``WrappedCompletions`` callback
+        which feeds the "LLM Stream" panel.  This method only reports start
+        and result status to the phase log — no inline text printing.
         """
-        self.console.print(f"[bold cyan]{label}[/bold cyan] ", end="")
-        collected: list[str] = []
-
-        def _on_text(delta: str) -> None:
-            collected.append(delta)
-            self.console.print(delta, end="", soft_wrap=True, highlight=False)
+        self.console.print(f"  Running {label} agent...")
 
         try:
-            result = run_fn(on_text=_on_text, **kwargs)
+            result = run_fn(**kwargs)
         except Exception as exc:
-            self.console.print()  # newline after streamed/partial output
             self.console.print(f"  [red]✗[/red] {label} agent failed: {exc}")
             return AgentResult(agent_name="", success=False, error=str(exc))
 
-        if collected:
-            self.console.print()  # newline after streamed prose
         if result.success:
             self.console.print(
                 f"  [green]✓[/green] {label} agent completed successfully."
@@ -218,55 +219,49 @@ class PaperPipeline:
         Returns:
             A populated PaperReport object containing the generated sections.
         """
-        self.console.print("\n[bold cyan]🚀 Starting Report Generation[/bold cyan]")
+        self.console.print("[bold cyan]🚀 Starting Report Generation[/bold cyan]")
         self.console.print(f"[bold]Paper ID:[/bold] {paper_id}")
-        self.console.print("[bold]LLM configuration in use:[/bold]")
         self.console.print(
-            f"  • [bold]Text model (Writer/Finder/Criticizer):[/bold] [cyan]{self.config.llms.text.model}[/cyan]"
+            f"  • [bold]Text model:[/bold] [cyan]{self.config.llms.text.model}[/cyan]"
+            f"  [dim]Thinking: {self.config.llms.text.enable_thinking}[/dim]"
         )
         self.console.print(
-            f"    [dim]Base URL: {self.config.llms.text.base_url} | Temperature: {self.config.llms.text.temperature} | Max tokens: {self.config.llms.text.max_tokens} | Thinking: {self.config.llms.text.enable_thinking}[/dim]"
-        )
-        self.console.print(
-            f"  • [bold]Searcher model (Paper Scoring):[/bold] [cyan]{self.config.llms.searcher.model}[/cyan]"
-        )
-        self.console.print(
-            f"    [dim]Base URL: {self.config.llms.searcher.base_url} | Temperature: {self.config.llms.searcher.temperature} | Max tokens: {self.config.llms.searcher.max_tokens} | Thinking: {self.config.llms.searcher.enable_thinking}[/dim]"
+            f"  • [bold]Searcher model:[/bold] [cyan]{self.config.llms.searcher.model}[/cyan]"
+            f"  [dim]Thinking: {self.config.llms.searcher.enable_thinking}[/dim]"
         )
 
-        # Fetch paper info
-        self.console.print(
-            "\n[bold yellow]🔄 Phase 1/6: Fetching paper metadata...[/bold yellow]"
-        )
+        # Phase 1: Fetch paper info
+        self.console.begin_phase("Phase 1/6: Fetching paper metadata")
         with self.console.status(
             "[dim]Contacting HuggingFace/arXiv APIs...[/dim]", spinner="dots"
         ):
             try:
                 paper = hf.paper_info(paper_id)
                 self.console.print(
-                    f'  [green]✓[/green] Found paper on HuggingFace: [bold]"{paper.title}"[/bold]'
+                    f'  [green]✓[/green] Found on HuggingFace: [bold]"{paper.title}"[/bold]'
                 )
             except HfCliError:
                 self.console.print(
-                    "  [dim]HuggingFace metadata fetch failed, trying arXiv API fallback...[/dim]"
+                    "  [dim]HuggingFace failed, trying arXiv fallback...[/dim]"
                 )
                 arxiv_paper = hf.fetch_arxiv_info(paper_id)
                 if arxiv_paper:
                     paper = arxiv_paper
                     self.console.print(
-                        f'  [green]✓[/green] Found paper on arXiv: [bold]"{paper.title}"[/bold]'
+                        f'  [green]✓[/green] Found on arXiv: [bold]"{paper.title}"[/bold]'
                     )
                 else:
                     self.console.print(
-                        "  [yellow]⚠[/yellow] Metadata fetch failed on both HuggingFace and arXiv, using minimal placeholder."
+                        "  [yellow]⚠[/yellow] Metadata fetch failed, using placeholder."
                     )
                     paper = Paper(id=paper_id, title=paper_id)
-
-        # Get paper content + figures from arXiv HTML. Falls back to PDF text
-        # (no figures) when HTML is unavailable for older papers.
-        self.console.print(
-            "[bold yellow]🔄 Phase 2/6: Retrieving paper content + figures from arXiv HTML...[/bold yellow]"
+        self.console.end_phase(
+            success=True,
+            summary=f'[bold]"{paper.title[:50]}…"[/bold]' if len(paper.title) > 50 else f'[bold]"{paper.title}"[/bold]',
         )
+
+        # Phase 2: Get paper content + figures from arXiv HTML.
+        self.console.begin_phase("Phase 2/6: Retrieving paper content + figures")
         paper_dir = self.storage.paper_dir(paper.title, paper.published_at)
         selected_figures: list[arxiv_html.SelectedFigure] = []
         content_md = ""
@@ -291,14 +286,14 @@ class PaperPipeline:
                 )
             except arxiv_html.HtmlUnavailable as exc:
                 self.console.print(
-                    f"  [dim]arXiv HTML unavailable ({exc}); falling back to PDF text...[/dim]"
+                    f"  [dim]arXiv HTML unavailable ({exc}); falling back to PDF...[/dim]"
                 )
                 if self.config.report.download_pdf:
                     try:
                         pdf_path = pdf.download_pdf(paper, self.config.pdf_cache_dir)
                         content_md = pdf.extract_text(pdf_path)
                         self.console.print(
-                            f"  [green]✓[/green] Extracted PDF text ({len(content_md)} chars, no figures)"
+                            f"  [green]✓[/green] Extracted PDF text ({len(content_md)} chars)"
                         )
                     except Exception as pdf_exc:
                         self.console.print(
@@ -306,7 +301,7 @@ class PaperPipeline:
                         )
             except arxiv_html.ParseError as exc:
                 self.console.print(
-                    f"  [yellow]⚠[/yellow] arXiv HTML parse failed ({exc}); trying PDF text."
+                    f"  [yellow]⚠[/yellow] HTML parse failed ({exc}); trying PDF."
                 )
                 if self.config.report.download_pdf:
                     try:
@@ -319,16 +314,16 @@ class PaperPipeline:
 
         if not content_md:
             self.console.print(
-                "  [yellow]⚠[/yellow] No full text content available. Falling back to paper abstract/summary."
+                "  [yellow]⚠[/yellow] No text available; using abstract."
             )
             content_md = paper.summary or "Paper content unavailable."
 
+        content_summary = f"{len(content_md)} chars, {len(selected_figures)} figure(s)"
+        self.console.end_phase(success=True, summary=content_summary)
         paper_content = PaperContent(paper=paper, markdown=content_md)
 
-        # Classify paper type
-        self.console.print(
-            "[bold yellow]🔄 Phase 3/8: Classifying paper type...[/bold yellow]"
-        )
+        # Phase 3: Classify paper type
+        self.console.begin_phase("Phase 3/6: Classifying paper type")
         paper_type = "method"  # default fallback
         with self.console.status(
             "[dim]Running Classifier LLM...[/dim]", spinner="dots"
@@ -339,26 +334,29 @@ class PaperPipeline:
                 confidence = classifier_result.data.get("confidence", 0.0)
                 reasoning = classifier_result.data.get("reasoning", "")
                 self.console.print(
-                    f"  [green]✓[/green] Paper classified as: [bold cyan]{paper_type}[/bold cyan] (confidence: {confidence:.0%})"
+                    f"  [green]✓[/green] Classified as: [bold cyan]{paper_type}[/bold cyan] (confidence: {confidence:.0%})"
                 )
                 if reasoning:
                     self.console.print(f"    [dim]{reasoning}[/dim]")
+                self.console.end_phase(
+                    success=True,
+                    summary=f"[cyan]{paper_type}[/cyan] ({confidence:.0%})",
+                )
             else:
                 self.console.print(
                     f"  [yellow]⚠[/yellow] Classification failed ({classifier_result.error}); defaulting to 'method'"
                 )
+                self.console.end_phase(
+                    warning=True, summary="Defaulting to 'method'"
+                )
 
-        # Run writer and finder
-        self.console.print(
-            "[bold yellow]🔄 Phase 4/6: Running Writer and Finder agents...[/bold yellow]"
-        )
+        # Phase 4: Run writer and finder
+        self.console.begin_phase("Phase 4/6: Writer & Finder agents")
         writer_result: AgentResult | None = None
         finder_result: AgentResult | None = None
 
         if self.config.report.stream:
-            # Streaming: run the two agents sequentially so their text deltas
-            # don't interleave. Each agent's research/narrative phase streams
-            # under a labeled header; the final structured phase stays quiet.
+            # Sequential: run one at a time; LLM output streams in the panel.
             writer_result = self._run_agent_streaming(
                 "📝 Writer",
                 self.writer.run,
@@ -377,13 +375,13 @@ class PaperPipeline:
             ):
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     self.console.print(
-                        f"  Running Writer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+                        f"  Running Writer agent ([cyan]{self.config.llms.text.model}[/cyan])..."
                     )
                     writer_future = executor.submit(
                         self.writer.run, content=paper_content, paper_type=paper_type
                     )
                     self.console.print(
-                        f"  Running Finder agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+                        f"  Running Finder agent ([cyan]{self.config.llms.text.model}[/cyan])..."
                     )
                     finder_future = executor.submit(
                         self.finder.run, content=paper_content
@@ -395,22 +393,29 @@ class PaperPipeline:
                             writer_result = result
                             if result.success:
                                 self.console.print(
-                                    "  [green]✓[/green] Writer agent completed successfully."
+                                    "  [green]✓[/green] Writer completed."
                                 )
                             else:
                                 self.console.print(
-                                    f"  [red]✗[/red] Writer agent failed: {result.error}"
+                                    f"  [red]✗[/red] Writer failed: {result.error}"
                                 )
                         elif result.agent_name == "finder":
                             finder_result = result
                             if result.success:
                                 self.console.print(
-                                    "  [green]✓[/green] Finder agent completed successfully."
+                                    "  [green]✓[/green] Finder completed."
                                 )
                             else:
                                 self.console.print(
-                                    f"  [red]✗[/red] Finder agent failed: {result.error}"
+                                    f"  [red]✗[/red] Finder failed: {result.error}"
                                 )
+
+        _w = "✓" if writer_result and writer_result.success else "✗"
+        _f = "✓" if finder_result and finder_result.success else "✗"
+        self.console.end_phase(
+            success=bool(writer_result and writer_result.success),
+            summary=f"Writer: {_w} | Finder: {_f}",
+        )
 
         # Ensure results exist
         if writer_result is None:
@@ -422,15 +427,13 @@ class PaperPipeline:
                 agent_name="finder", success=False, error="Finder did not complete"
             )
 
-        # Criticizer depends on writer output
-        self.console.print(
-            "[bold yellow]🔄 Phase 5/6: Running Criticizer agent to refine report...[/bold yellow]"
-        )
+        # Phase 5: Criticizer depends on writer output
+        self.console.begin_phase("Phase 5/6: Criticizer agent")
         with self.console.status(
             "[dim]Running Criticizer LLM...[/dim]", spinner="dots"
         ):
             self.console.print(
-                f"  Running Criticizer agent using text model: [cyan]{self.config.llms.text.model}[/cyan]..."
+                f"  Running Criticizer agent ([cyan]{self.config.llms.text.model}[/cyan])..."
             )
             criticizer_result = self.criticizer.run(
                 content=paper_content,
@@ -439,20 +442,21 @@ class PaperPipeline:
             )
             if criticizer_result.success:
                 self.console.print(
-                    "  [green]✓[/green] Criticizer agent completed successfully."
+                    "  [green]✓[/green] Criticizer completed."
                 )
+                self.console.end_phase(success=True)
             else:
                 self.console.print(
-                    f"  [red]✗[/red] Criticizer agent failed: {criticizer_result.error}"
+                    f"  [red]✗[/red] Criticizer failed: {criticizer_result.error}"
+                )
+                self.console.end_phase(
+                    success=False, summary=str(criticizer_result.error)
                 )
 
-        # Assemble. Figures were already collected from arXiv HTML in Phase 2
-        # (selected_figures); no separate extraction/selection step remains.
-        self.console.print(
-            "[bold yellow]🔄 Phase 6/6: Assembling final report...[/bold yellow]"
-        )
+        # Phase 6: Assemble. Figures already collected in Phase 2.
+        self.console.begin_phase("Phase 6/6: Assembling final report")
         with self.console.status(
-            "[dim]Formatting, generating LaTeX equations, and writing report files...[/dim]",
+            "[dim]Formatting and writing report files...[/dim]",
             spinner="dots",
         ):
             report, md_content, html_content = self.assembler.assemble(
@@ -464,7 +468,8 @@ class PaperPipeline:
                 selected_figures=selected_figures or None,
                 paper_type=paper_type,
             )
-            self.console.print("  [green]✓[/green] Report assembled successfully!")
+            self.console.print("  [green]✓[/green] Report assembled!")
+        self.console.end_phase(success=True)
 
         # Publishing is opt-in (publish.enabled) and best-effort: each enabled
         # publisher runs independently and failures are non-fatal.

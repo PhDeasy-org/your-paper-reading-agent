@@ -340,10 +340,13 @@ class _ArxivHtmlParser(HTMLParser):
                 self._math_depth -= 1
                 latex = self._math_latex
                 if self._math_depth == 0 and latex:
-                    if self._math_is_block:
-                        self._emit(f"$${latex}$$")
+                    formatted_math = f"$${latex}$$" if self._math_is_block else f"${latex}$"
+                    if self._heading_buf is not None:
+                        self._heading_buf.append(formatted_math)
+                    elif self._in_figure > 0 and self._figure_caption_buf is not None:
+                        self._figure_caption_buf.append(formatted_math)
                     else:
-                        self._emit(f"${latex}$")
+                        self._emit(formatted_math)
                 self._math_is_block = False
                 self._math_latex = None
             return
@@ -356,6 +359,12 @@ class _ArxivHtmlParser(HTMLParser):
         if self._is_skipping():
             return
 
+        if self._math_depth > 0:
+            if self._want_annotation_tex:
+                assert self._math_latex is not None
+                self._math_latex += data
+            return
+
         if self._heading_buf is not None:
             self._heading_buf.append(data)
             return
@@ -364,11 +373,6 @@ class _ArxivHtmlParser(HTMLParser):
         # markdown the analysis agents read).
         if self._in_figure > 0 and self._figure_caption_buf is not None:
             self._figure_caption_buf.append(data)
-            return
-
-        if self._math_depth > 0 and self._want_annotation_tex:
-            assert self._math_latex is not None
-            self._math_latex += data
             return
 
         # Ordinary text content.
