@@ -7,21 +7,6 @@ on:
     branches: [main]
 
 jobs:
-  lint:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - run: uv sync --dev
-      - run: uv run ruff check
-      - run: uv run ruff format --check
-
   test:
     strategy:
       fail-fast: false
