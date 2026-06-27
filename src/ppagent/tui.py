@@ -507,6 +507,7 @@ def get_menu_definition(menu_id: str, cfg: AppConfig) -> list[MenuItem]:
                 "qwen",
                 "doubao",
                 "grok",
+                "deepseek",
             ):
                 continue
             is_active = spec.key == active_vendor
